@@ -79,13 +79,21 @@ install_data(
 install_data(
     [
         'schemes/base16-twilight-dark.json',
+        'schemes/catppuccin-latte.json',
+        'schemes/catppuccin-mocha.json',
+        'schemes/dracula.json',
+        'schemes/gruvbox-dark.json',
+        'schemes/gruvbox-light.json',
         'schemes/linux.json',
         'schemes/material.json',
         'schemes/monokai.json',
+        'schemes/nord.json',
+        'schemes/one-dark.json',
         'schemes/orchis.json',
         'schemes/solarized-dark.json',
         'schemes/solarized-light.json',
         'schemes/tango.json',
+        'schemes/tokyo-night.json',
         'schemes/yaru.json',
     ],
     install_dir: pkgdatadir / 'schemes'

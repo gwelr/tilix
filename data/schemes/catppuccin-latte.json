@@ -1,0 +1,25 @@
+{
+    "name": "Catppuccin Latte",
+    "comment": "Catppuccin Latte - https://github.com/catppuccin/catppuccin",
+    "use-theme-colors": false,
+    "foreground-color": "#4C4F69",
+    "background-color": "#EFF1F5",
+    "palette": [
+        "#5C5F77",
+        "#D20F39",
+        "#40A02B",
+        "#DF8E1D",
+        "#1E66F5",
+        "#EA76CB",
+        "#179299",
+        "#ACB0BE",
+        "#6C6F85",
+        "#D20F39",
+        "#40A02B",
+        "#DF8E1D",
+        "#1E66F5",
+        "#EA76CB",
+        "#179299",
+        "#BCC0CC"
+    ]
+}
