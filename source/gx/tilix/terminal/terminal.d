@@ -3107,6 +3107,14 @@ private:
             int port = gsProxyScheme.getInt("port");
             if (host.length == 0 || port == 0) return;
 
+            // Strip protocol prefix if already present in the host value
+            foreach (prefix; ["http://", "https://", "socks://", "ftp://"]) {
+                if (host.startsWith(prefix)) {
+                    host = host[prefix.length .. $];
+                    break;
+                }
+            }
+
             string value = urlScheme ~ "://";
             if (scheme == "http") {
                 if (gsProxyScheme.getBoolean("use-authentication")) {
