@@ -290,11 +290,24 @@ private:
             if (sidebarPinned) {
                 // Extract the sidebar's internal ScrolledWindow and embed it
                 // directly, bypassing the Revealer overlay behavior
+                // Add subtle styling for the pinned sidebar selection
+                import gtk.CssProvider : CssProvider;
+                import gdk.Display : Display;
+                auto sidebarCss = new CssProvider();
+                sidebarCss.loadFromData(
+                    ".tilix-session-sidebar row:selected { background: alpha(@theme_selected_bg_color, 0.3); }"
+                );
+                StyleContext.addProviderForScreen(
+                    Display.getDefault().getDefaultScreen(),
+                    sidebarCss, 600); // APPLICATION priority
+
                 ScrolledWindow sidebarContent = sb.getContentWidget();
                 sb.remove(sidebarContent);
                 sidebarContent.setSizeRequest(200, -1);
+                sidebarContent.setVexpand(true);
                 bPinnedLayout = new Box(Orientation.HORIZONTAL, 0);
-                bPinnedLayout.packStart(sidebarContent, false, false, 0);
+                bPinnedLayout.setHomogeneous(false);
+                bPinnedLayout.packStart(sidebarContent, false, true, 0);
                 bPinnedLayout.packStart(nb, true, true, 0);
             } else {
                 overlay = new Overlay();
