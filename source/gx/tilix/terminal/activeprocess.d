@@ -36,6 +36,28 @@ class Process {
         return to!pid_t(processStat[2]);
     }
 
+    /**
+     * Returns true if the process is running as root (effective UID == 0).
+     * Reads the Uid line from /proc/[PID]/status which has the format:
+     * Uid: real effective saved filesystem
+     */
+    bool isRoot() {
+        try {
+            string data = to!string(cast(char[]) read(format("/proc/%d/status", pid)));
+            foreach (line; data.splitLines()) {
+                if (line.startsWith("Uid:")) {
+                    auto fields = line.split();
+                    if (fields.length >= 3) {
+                        return fields[2] == "0"; // effective UID
+                    }
+                }
+            }
+        } catch (FileException fe) {
+            // Process may have exited
+        }
+        return false;
+    }
+
     string[] parseStatFile() {
         try {
             string data = to!string(cast(char[])read(format("/proc/%d/stat", pid)));

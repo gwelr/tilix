@@ -226,6 +226,7 @@ private:
     Spinner spBell;
     Image imgReadOnly;
     Image imgNewOuput;
+    Label lblRootIndicator;
 
     SimpleActionGroup sagTerminalActions;
 
@@ -415,6 +416,23 @@ private:
         imgNewOuput.setNoShowAll(true);
         imgNewOuput.setTooltipText(_("New output"));
         bTitle.packEnd(imgNewOuput, false, false, 0);
+
+        //Root Indicator - apply inline CSS for the root title bar tint
+        import gtk.CssProvider;
+        import gdk.Screen;
+        import gdk.Display;
+        auto rootCss = new CssProvider();
+        rootCss.loadFromData(".tilix-root-title { background: rgba(204, 0, 0, 0.45); }");
+        StyleContext.addProviderForScreen(
+            Display.getDefault().getDefaultScreen(),
+            rootCss, ProviderPriority.APPLICATION);
+
+        //Root Indicator label
+        lblRootIndicator = new Label("");
+        lblRootIndicator.setMarkup("<span weight=\"bold\">" ~ _("as root") ~ "</span>");
+        lblRootIndicator.setTooltipText(_("Running as root"));
+        lblRootIndicator.setNoShowAll(true);
+        bTitle.packEnd(lblRootIndicator, false, false, 0);
 
         //Terminal Bell Spinner
         spBell = new Spinner();
@@ -3706,10 +3724,22 @@ private:
 
 // Process monitoring
 private:
-    void childProcessEvent(MonitorEventType eventType, GPid process, pid_t child, string name) {
+    void childProcessEvent(MonitorEventType eventType, GPid process, pid_t child, string name, bool isRoot) {
         if (process == gpid) {
             activeProcessName = name;
             updateDisplayText();
+            updateRootIndicator(isRoot);
+        }
+    }
+
+    void updateRootIndicator(bool isRoot) {
+        if (lblRootIndicator is null || bTitle is null) return;
+        if (isRoot && gsSettings.getBoolean(SETTINGS_ROOT_INDICATOR)) {
+            lblRootIndicator.show();
+            bTitle.getStyleContext().addClass("tilix-root-title");
+        } else {
+            lblRootIndicator.hide();
+            bTitle.getStyleContext().removeClass("tilix-root-title");
         }
     }
 
