@@ -1624,6 +1624,11 @@ private:
         bh.bind(SETTINGS_STRIP_TRAILING_WHITESPACE, cbStripTrailing, "active", GSettingsBindFlags.DEFAULT);
         add(cbStripTrailing);
 
+        //Strip trailing whitespace on copy
+        CheckButton cbCopyStripTrailing = new CheckButton(_("Strip trailing whitespace on copy"));
+        bh.bind(SETTINGS_COPY_STRIP_TRAILING_WHITESPACE, cbCopyStripTrailing, "active", GSettingsBindFlags.DEFAULT);
+        add(cbCopyStripTrailing);
+
         //Copy on Select
         CheckButton cbCopyOnSelect = new CheckButton(_("Automatically copy text to clipboard when selecting"));
         bh.bind(SETTINGS_COPY_ON_SELECT_KEY, cbCopyOnSelect, "active", GSettingsBindFlags.DEFAULT);

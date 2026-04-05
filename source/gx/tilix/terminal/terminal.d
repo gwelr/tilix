@@ -513,7 +513,7 @@ private:
         //Clipboard actions
         saCopy = registerActionWithSettings(group, ACTION_PREFIX, ACTION_COPY, gsShortcuts, delegate(GVariant, SimpleAction) {
             if (vte.getHasSelection()) {
-                vte.copyClipboard();
+                copyToClipboard();
             }
         });
         if (checkVTEVersion(VTE_VERSION_COPY_AS_HTML)) {
@@ -1067,7 +1067,7 @@ private:
             if (vte is null) return;
 
             if (vte.getHasSelection() && gsSettings.getBoolean(SETTINGS_COPY_ON_SELECT_KEY)) {
-                vte.copyClipboard();
+                copyToClipboard();
             }
         });
 
@@ -1459,6 +1459,25 @@ private:
             }
         }
         focusTerminal();
+    }
+
+    void copyToClipboard() {
+        import gtk.Clipboard : Clipboard;
+
+        vte.copyClipboard();
+        if (gsSettings.getBoolean(SETTINGS_COPY_STRIP_TRAILING_WHITESPACE)) {
+            Clipboard cb = Clipboard.get(GDK_SELECTION_CLIPBOARD);
+            string text = cb.waitForText();
+            if (text !is null && text.length > 0) {
+                import std.array : join;
+                string[] lines;
+                foreach (line; text.splitLines()) {
+                    lines ~= line.stripRight();
+                }
+                string stripped = lines.join("\n");
+                cb.setText(stripped, cast(int) stripped.length);
+            }
+        }
     }
 
     void paste(GdkAtom source) {

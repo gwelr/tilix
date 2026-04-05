@@ -293,6 +293,11 @@
       <summary>Strip trailing whitespace on paste.</summary>
       <description>If true, trailing whitespace will be stripped when pasting.</description>
     </key>
+    <key name="copy-strip-trailing-whitespace" type="b">
+      <default>false</default>
+      <summary>Strip trailing whitespace on copy.</summary>
+      <description>If true, trailing whitespace will be stripped from each line when copying.</description>
+    </key>
     <key name="paste-advanced-default" type="b">
       <default>false</default>
       <summary>Use the advanced paste as the default paste</summary>
