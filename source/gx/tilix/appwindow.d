@@ -773,11 +773,12 @@ private:
 
     void addSession(Session session) {
         int index;
+        int insertPos = nb.getCurrentPage() + 1;
         if (!useTabs) {
-            index = nb.appendPage(session, session.name);
+            index = nb.insertPage(session, new Label(session.name), insertPos);
         } else {
             SessionTabLabel label = new SessionTabLabel(nb.getTabPos, session.displayName, session);
-            index = nb.appendPage(session, label);
+            index = nb.insertPage(session, label, insertPos);
         }
         nb.showAll();
         nb.setCurrentPage(index);
