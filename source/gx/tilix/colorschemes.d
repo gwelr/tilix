@@ -103,7 +103,7 @@ class ColorScheme {
 
             return false;
         }
-        if (useThemeColors) {
+        if (!useThemeColors) {
             if (!(equal(scheme.background, this.background) &&
                  equal(scheme.foreground, this.foreground))) {
                      return false;
