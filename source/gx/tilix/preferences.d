@@ -151,6 +151,7 @@ immutable string[] SETTINGS_TAB_POSITION_VALUES = ["left", "right", "top", "bott
 immutable string[] SETTINGS_QUAKE_WINDOW_POSITION_VALUES = ["top", "bottom"];
 
 enum SETTINGS_PROCESS_MONITOR = "process-monitor";
+enum SETTINGS_ROOT_INDICATOR = "root-indicator";
 
 //Proxy Environment Variables
 enum SETTINGS_SET_PROXY_ENV_KEY = "set-proxy-env";

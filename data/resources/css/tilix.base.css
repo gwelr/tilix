@@ -134,6 +134,11 @@ revealer.right > scrolledwindow {
     80%  {-gtk-icon-transform: translateX(1px);}
 }
 
+.tilix-root-indicator {
+  color: #CC0000;
+  font-weight: bold;
+}
+
 .tilix-bell {
   background: none;
   opacity: 0;

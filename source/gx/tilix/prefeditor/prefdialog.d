@@ -1633,6 +1633,11 @@ private:
         CheckButton cbCopyOnSelect = new CheckButton(_("Automatically copy text to clipboard when selecting"));
         bh.bind(SETTINGS_COPY_ON_SELECT_KEY, cbCopyOnSelect, "active", GSettingsBindFlags.DEFAULT);
         add(cbCopyOnSelect);
+
+        //Root Indicator
+        CheckButton cbRootIndicator = new CheckButton(_("Show visual indicator when running as root"));
+        bh.bind(SETTINGS_ROOT_INDICATOR, cbRootIndicator, "active", GSettingsBindFlags.DEFAULT);
+        add(cbRootIndicator);
     }
 
 public:
