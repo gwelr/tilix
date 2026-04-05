@@ -2784,7 +2784,9 @@ private:
             outputError(msg, workingDir, args, envv);
             showInfoBarMessage(msg);
         }
-        vte.grabFocus();
+        if (vte.hasFocus()) {
+            vte.grabFocus();
+        }
     }
 
     enum O_CLOEXEC = 0x80000;
