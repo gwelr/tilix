@@ -294,3 +294,221 @@ private void parseColor(RGBA rgba, string value) {
         return;
     rgba.parse(value);
 }
+
+// --------------------------------------------------------------------------
+// Unit tests for ColorScheme
+//
+// These tests exercise the pure-D logic: JSON parsing, serialization,
+// color comparison, and scheme matching. They don't require a running
+// GTK application — just the GtkD RGBA type for color representation.
+// --------------------------------------------------------------------------
+
+/// Helper: build a minimal valid scheme JSON string for testing.
+/// This avoids depending on files on disk.
+private string buildTestSchemeJson(
+    string name = "Test",
+    string fg = "#FFFFFF",
+    string bg = "#000000",
+    bool useThemeColors = false
+) {
+    import std.format : format;
+    return format(`{
+        "name": "%s",
+        "comment": "test scheme",
+        "use-theme-colors": %s,
+        "foreground-color": "%s",
+        "background-color": "%s",
+        "palette": [
+            "#000000", "#AA0000", "#00AA00", "#AA5500",
+            "#0000AA", "#AA00AA", "#00AAAA", "#AAAAAA",
+            "#555555", "#FF5555", "#55FF55", "#FFFF55",
+            "#5555FF", "#FF55FF", "#55FFFF", "#FFFFFF"
+        ]
+    }`, name, useThemeColors ? "true" : "false", fg, bg);
+}
+
+/// Helper: load a ColorScheme from a JSON string by writing to a temp file.
+/// We need this because loadScheme() reads from a file path.
+private ColorScheme loadSchemeFromString(string json) {
+    import std.file : write, remove, tempDir;
+    import std.path : buildPath;
+    string tmpFile = buildPath(tempDir(), "tilix_test_scheme.json");
+    write(tmpFile, json);
+    scope(exit) remove(tmpFile);
+    return loadScheme(tmpFile);
+}
+
+/// Test: load a minimal color scheme from JSON
+unittest {
+    auto cs = loadSchemeFromString(buildTestSchemeJson("Dracula", "#F8F8F2", "#282A36"));
+
+    assert(cs.name == "Dracula");
+    assert(cs.comment == "test scheme");
+    assert(!cs.useThemeColors);
+
+    // Verify foreground was parsed — RGBA stores as 0.0-1.0 floats.
+    // #F8 = 248, 248/255 ≈ 0.9725. #F2 = 242, 242/255 ≈ 0.9490.
+    // We use a tolerance check because float comparison is imprecise.
+    assert(cs.foreground.red > 0.97 && cs.foreground.red < 0.98,
+        "expected foreground red ≈ 0.973");
+    assert(cs.foreground.green > 0.97 && cs.foreground.green < 0.98,
+        "expected foreground green ≈ 0.973");
+    assert(cs.foreground.blue > 0.94 && cs.foreground.blue < 0.96,
+        "expected foreground blue ≈ 0.949");
+}
+
+/// Test: palette must have exactly 16 colors
+unittest {
+    import std.exception : assertThrown;
+
+    string badJson = `{
+        "name": "Bad",
+        "use-theme-colors": false,
+        "foreground-color": "#FFFFFF",
+        "background-color": "#000000",
+        "palette": ["#000000", "#111111"]
+    }`;
+
+    // assertThrown checks that the expression throws the given exception type.
+    // This is D's idiomatic way to test error conditions.
+    assertThrown!Exception(loadSchemeFromString(badJson));
+}
+
+/// Test: use-theme-colors flag is parsed correctly
+unittest {
+    auto cs1 = loadSchemeFromString(buildTestSchemeJson("A", "#FFF", "#000", false));
+    assert(!cs1.useThemeColors);
+
+    auto cs2 = loadSchemeFromString(buildTestSchemeJson("B", "#FFF", "#000", true));
+    assert(cs2.useThemeColors);
+}
+
+/// Test: optional fields (highlight, cursor, badge, bold colors)
+unittest {
+    string json = `{
+        "name": "Full",
+        "comment": "all optional fields",
+        "use-theme-colors": false,
+        "foreground-color": "#FFFFFF",
+        "background-color": "#000000",
+        "use-highlight-color": true,
+        "highlight-foreground-color": "#FF0000",
+        "highlight-background-color": "#00FF00",
+        "use-cursor-color": true,
+        "cursor-foreground-color": "#0000FF",
+        "cursor-background-color": "#FFFF00",
+        "use-badge-color": true,
+        "badge-color": "#FF00FF",
+        "use-bold-color": true,
+        "bold-color": "#00FFFF",
+        "palette": [
+            "#000000", "#AA0000", "#00AA00", "#AA5500",
+            "#0000AA", "#AA00AA", "#00AAAA", "#AAAAAA",
+            "#555555", "#FF5555", "#55FF55", "#FFFF55",
+            "#5555FF", "#FF55FF", "#55FFFF", "#FFFFFF"
+        ]
+    }`;
+
+    auto cs = loadSchemeFromString(json);
+    assert(cs.useHighlightColor);
+    assert(cs.useCursorColor);
+    assert(cs.useBadgeColor);
+    assert(cs.useBoldColor);
+
+    // #FF0000 → red=1.0, green=0.0, blue=0.0
+    assert(cs.highlightFG.red > 0.99);
+    assert(cs.highlightFG.green < 0.01);
+
+    // #0000FF → red=0.0, green=0.0, blue=1.0
+    assert(cs.cursorFG.blue > 0.99);
+    assert(cs.cursorFG.red < 0.01);
+}
+
+/// Test: JSON round-trip (load → toJson → load again → compare)
+unittest {
+    string json = buildTestSchemeJson("RoundTrip", "#AABBCC", "#112233");
+    auto original = loadSchemeFromString(json);
+
+    // Convert back to JSON, then reload
+    JSONValue jsonValue = schemeToJson(original);
+    string rewritten = jsonValue.toPrettyString();
+    auto reloaded = loadSchemeFromString(rewritten);
+
+    // The palette should survive the round-trip exactly
+    foreach (i; 0 .. 16) {
+        assert(original.palette[i].equal(reloaded.palette[i]),
+            "palette color mismatch at index " ~ to!string(i));
+    }
+    // FG/BG should survive too
+    assert(original.foreground.equal(reloaded.foreground));
+    assert(original.background.equal(reloaded.background));
+}
+
+/// Test: ColorScheme.equal — identical schemes
+unittest {
+    string json = buildTestSchemeJson("Same", "#FFFFFF", "#000000");
+    auto a = loadSchemeFromString(json);
+    auto b = loadSchemeFromString(json);
+
+    // Different id (randomUUID) but same colors — equalColor should match
+    assert(a.equalColor(b), "identical color schemes should be equalColor");
+
+    // Full equal (including id/name) won't match because IDs differ
+    // (each loadScheme generates a new randomUUID)
+    assert(!a.equal(b, false), "different IDs should fail full equality");
+}
+
+/// Test: ColorScheme.equal — different foreground color
+unittest {
+    auto a = loadSchemeFromString(buildTestSchemeJson("A", "#FFFFFF", "#000000"));
+    auto b = loadSchemeFromString(buildTestSchemeJson("B", "#AAAAAA", "#000000"));
+
+    // useThemeColors is false, so fg/bg are compared
+    assert(!a.equalColor(b), "different foreground should not match");
+}
+
+/// Test: ColorScheme.equal — useThemeColors skips fg/bg comparison
+unittest {
+    // When useThemeColors is true, fg/bg colors are ignored in comparison
+    auto a = loadSchemeFromString(buildTestSchemeJson("A", "#FFFFFF", "#000000", true));
+    auto b = loadSchemeFromString(buildTestSchemeJson("B", "#AAAAAA", "#333333", true));
+
+    // Despite different fg/bg, equalColor should match because
+    // useThemeColors=true means fg/bg come from the GTK theme, not the scheme
+    assert(a.equalColor(b),
+        "with useThemeColors=true, fg/bg differences should be ignored");
+}
+
+/// Test: findSchemeByColors
+unittest {
+    auto dracula = loadSchemeFromString(buildTestSchemeJson("Dracula", "#F8F8F2", "#282A36"));
+    auto monokai = loadSchemeFromString(buildTestSchemeJson("Monokai", "#F8F8F0", "#272822"));
+    auto schemes = [dracula, monokai];
+
+    // Search for a scheme matching Dracula's colors
+    auto needle = loadSchemeFromString(buildTestSchemeJson("X", "#F8F8F2", "#282A36"));
+    int idx = findSchemeByColors(schemes, needle);
+    assert(idx == 0, "should find Dracula at index 0");
+
+    // Search for a scheme that doesn't exist
+    auto unknown = loadSchemeFromString(buildTestSchemeJson("X", "#123456", "#654321"));
+    int idx2 = findSchemeByColors(schemes, unknown);
+    assert(idx2 == -1, "should return -1 for no match");
+}
+
+/// Test: parseColor with empty string should not crash
+unittest {
+    RGBA color = new RGBA();
+    parseColor(color, "");
+    // Should not crash — color remains at default (0,0,0,0)
+    assert(color.red == 0.0);
+}
+
+/// Test: parseColor with valid hex
+unittest {
+    RGBA color = new RGBA();
+    parseColor(color, "#FF0000");
+    assert(color.red > 0.99);
+    assert(color.green < 0.01);
+    assert(color.blue < 0.01);
+}

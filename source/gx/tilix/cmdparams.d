@@ -361,3 +361,129 @@ public:
         return _group;
     }
 }
+
+// --------------------------------------------------------------------------
+// Unit tests for CommandParameters
+//
+// In D, a `unittest` block is a special block that:
+//   - Only compiles when building with the test flag (meson's d_unittest:true)
+//   - Can access private members of types in the same module
+//   - Runs automatically before main() when the test binary executes
+//   - Uses assert() for checks — a failed assert aborts with file:line info
+//
+// Convention: one unittest block per logical group of tests.
+// --------------------------------------------------------------------------
+
+/// Test parseGeometry with full geometry string (WxH+X+Y)
+unittest {
+    // CommandParameters is a struct, so we can create one without
+    // calling the GTK-dependent constructor — just default-init it.
+    CommandParameters cp;
+
+    // Standard case: width x height + positive x + positive y
+    cp.parseGeometry("80x24+100+200");
+    assert(cp._geometry.flag == GeometryFlag.FULL);
+    assert(cp._geometry.width == 80);
+    assert(cp._geometry.height == 24);
+    assert(cp._geometry.x == 100);
+    assert(cp._geometry.y == 200);
+    assert(!cp._geometry.xNegative);
+    assert(!cp._geometry.yNegative);
+}
+
+/// Test parseGeometry with negative offsets
+unittest {
+    CommandParameters cp;
+
+    // Negative x and y — used to position from right/bottom edge
+    cp.parseGeometry("120x40-50-30");
+    assert(cp._geometry.flag == GeometryFlag.FULL);
+    assert(cp._geometry.width == 120);
+    assert(cp._geometry.height == 40);
+    assert(cp._geometry.x == -50);
+    assert(cp._geometry.y == -30);
+    assert(cp._geometry.xNegative);
+    assert(cp._geometry.yNegative);
+}
+
+/// Test parseGeometry with mixed positive/negative offsets
+unittest {
+    CommandParameters cp;
+
+    // Positive x, negative y
+    cp.parseGeometry("100x50+10-20");
+    assert(cp._geometry.flag == GeometryFlag.FULL);
+    assert(cp._geometry.x == 10);
+    assert(cp._geometry.y == -20);
+    assert(!cp._geometry.xNegative);
+    assert(cp._geometry.yNegative);
+
+    // Negative x, positive y
+    cp.parseGeometry("100x50-10+20");
+    assert(cp._geometry.flag == GeometryFlag.FULL);
+    assert(cp._geometry.x == -10);
+    assert(cp._geometry.y == 20);
+    assert(cp._geometry.xNegative);
+    assert(!cp._geometry.yNegative);
+}
+
+/// Test parseGeometry with dimensions only (WxH, no position)
+unittest {
+    CommandParameters cp;
+
+    cp.parseGeometry("132x43");
+    assert(cp._geometry.flag == GeometryFlag.PARTIAL);
+    assert(cp._geometry.width == 132);
+    assert(cp._geometry.height == 43);
+    // x, y should be untouched (default 0)
+    assert(cp._geometry.x == 0);
+    assert(cp._geometry.y == 0);
+}
+
+/// Test parseGeometry with invalid input
+unittest {
+    CommandParameters cp;
+
+    // Garbage string — should result in GeometryFlag.NONE
+    cp.parseGeometry("not-a-geometry");
+    assert(cp._geometry.flag == GeometryFlag.NONE);
+
+    // Empty string
+    cp.parseGeometry("");
+    assert(cp._geometry.flag == GeometryFlag.NONE);
+}
+
+/// Test parseGeometry with zero position
+unittest {
+    CommandParameters cp;
+
+    cp.parseGeometry("80x24+0+0");
+    assert(cp._geometry.flag == GeometryFlag.FULL);
+    assert(cp._geometry.x == 0);
+    assert(cp._geometry.y == 0);
+    assert(!cp._geometry.xNegative);
+    assert(!cp._geometry.yNegative);
+}
+
+/// Test CommandParameters.clear resets all fields
+unittest {
+    CommandParameters cp;
+
+    // Set some geometry first
+    cp.parseGeometry("80x24+100+200");
+    assert(cp._geometry.flag == GeometryFlag.FULL);
+
+    // After clear, everything should be reset
+    cp.clear();
+    assert(cp._geometry.flag == GeometryFlag.NONE);
+    assert(cp._geometry.width == 0);
+    assert(cp._geometry.height == 0);
+    assert(cp._geometry.x == 0);
+    assert(cp._geometry.y == 0);
+    assert(!cp._geometry.xNegative);
+    assert(!cp._geometry.yNegative);
+    assert(cp._workingDir.length == 0);
+    assert(!cp._maximize);
+    assert(!cp._quake);
+    assert(cp._exitCode == 0);
+}
