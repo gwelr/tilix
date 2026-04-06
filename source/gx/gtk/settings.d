@@ -79,10 +79,17 @@ public:
     }
 
     /**
-     * Unbinds all added binds from settings object
+     * Unbinds all added binds from settings object.
+     * Checks that the bound object's GObject is still valid before
+     * calling unbind, to avoid crashes during GTK dispose cascades
+     * when widgets have already been finalized.
      */
     void unbind() {
+        if (_settings is null) return;
         foreach(binding; bindings) {
+            if (binding.object is null) continue;
+            // Check the underlying GObject pointer is still valid
+            if (binding.object.getObjectGStruct() is null) continue;
             _settings.unbind(binding.object, binding.property);
         }
     }

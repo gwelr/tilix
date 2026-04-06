@@ -248,6 +248,9 @@ private:
     GSettings gsShortcuts;
     GSettings gsDesktop;
     GSettings gsSettings;
+    gulong gsProfileChangedHandlerId;
+    gulong gsDesktopChangedHandlerId;
+    gulong gsSettingsChangedHandlerId;
 
     //The UUID of the profile which is currently active
     string _activeProfileUUID;
@@ -3846,13 +3849,13 @@ public:
         }
 
         gsSettings = new GSettings(SETTINGS_ID);
-        gsSettings.addOnChanged(delegate(string key, GSettings) { applyPreference(key); });
+        gsSettingsChangedHandlerId = gsSettings.addOnChanged(delegate(string key, GSettings) { applyPreference(key); });
         gsProfile = prfMgr.getProfileSettings(_activeProfileUUID);
         monitorSilence = gsProfile.getBoolean(SETTINGS_PROFILE_NOTIFY_ENABLED_KEY);
 
         gsShortcuts = new GSettings(SETTINGS_KEY_BINDINGS_ID);
         gsDesktop = new GSettings(SETTINGS_DESKTOP_ID);
-        gsDesktop.addOnChanged(delegate(string key, GSettings) {
+        gsDesktopChangedHandlerId = gsDesktop.addOnChanged(delegate(string key, GSettings) {
             if (key == SETTINGS_MONOSPACE_FONT_KEY) {
                 applyPreference(SETTINGS_PROFILE_FONT_KEY);
             }
@@ -3861,7 +3864,7 @@ public:
         trace("Apply preferences");
         applyPreferences();
         trace("Profile Event Handler");
-        gsProfile.addOnChanged(delegate(string key, Settings) {
+        gsProfileChangedHandlerId = gsProfile.addOnChanged(delegate(string key, Settings) {
             applyPreference(key);
         });
         // notified when theme changed
@@ -3941,6 +3944,21 @@ public:
             rFind.onSearchEntryFocusOut.disconnect(&terminalWidgetFocusOut);
             rFind.destroy();
             rFind = null;
+        }
+
+        // Disconnect GSettings signal handlers to prevent callbacks
+        // firing on a destroyed terminal (fixes issue #13)
+        if (gsProfileChangedHandlerId > 0) {
+            Signals.handlerDisconnect(gsProfile, gsProfileChangedHandlerId);
+            gsProfileChangedHandlerId = 0;
+        }
+        if (gsDesktopChangedHandlerId > 0) {
+            Signals.handlerDisconnect(gsDesktop, gsDesktopChangedHandlerId);
+            gsDesktopChangedHandlerId = 0;
+        }
+        if (gsSettingsChangedHandlerId > 0) {
+            Signals.handlerDisconnect(gsSettings, gsSettingsChangedHandlerId);
+            gsSettingsChangedHandlerId = 0;
         }
 
         if (vte !is null && !inDestruction()) {
