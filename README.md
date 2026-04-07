@@ -8,9 +8,9 @@
 
 **Tilix, but with a pulse.**
 
-ttyx_ is an actively maintained fork of [Tilix](https://github.com/gnunn1/tilix), the tiling terminal emulator for Linux. The original project did amazing work — but with development stalled and a growing list of unaddressed bugs, ttyx_ picks up where it left off.
+ttyx_ is an actively maintained fork of [Tilix](https://github.com/gnunn1/tilix), the tiling terminal emulator for Linux. The original project did amazing work but with development stalled and a growing list of unaddressed bugs, ttyx_ picks up where it left off.
 
-Same great terminal. Fresh fixes, new features, and someone actually reading the issues.
+Same great terminal. Fresh fixes, new features, and someone actually reading the issues (maybe).
 
 ## What's new since Tilix
 
