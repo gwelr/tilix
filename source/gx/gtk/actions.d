@@ -156,9 +156,57 @@ SimpleAction registerAction(ActionMapIF actionMap, string prefix, string id, str
     return action;
 }
 
+// --------------------------------------------------------------------------
+// Unit tests for action name parsing
+//
+// D lesson — `out` parameters:
+//   `out string prefix` means the caller's variable is set by the function.
+//   Unlike `ref`, `out` parameters are automatically initialized to their
+//   .init value (empty string for `string`) when the function starts.
+//   This is D's way of returning multiple values without tuples.
+// --------------------------------------------------------------------------
+
+/// Test: getActionNameFromKey splits on first hyphen
 unittest {
     string prefix, id;
     getActionNameFromKey("terminal-split-horizontal", prefix, id);
-    assert("terminal" == prefix);
-    assert("split-horizontal" == id);
+    assert(prefix == "terminal");
+    assert(id == "split-horizontal");
+}
+
+/// Test: getActionDetailedName joins with dot
+unittest {
+    assert(getActionDetailedName("win", "close") == "win.close");
+    assert(getActionDetailedName("terminal", "copy") == "terminal.copy");
+}
+
+/// Test: getActionKey joins with hyphen
+unittest {
+    assert(getActionKey("terminal", "split-horizontal") == "terminal-split-horizontal");
+}
+
+/// Test: keyToDetailedActionName converts hyphen key to dotted action name
+unittest {
+    // "terminal-split-horizontal" → "terminal.split-horizontal"
+    assert(keyToDetailedActionName("terminal-split-horizontal") == "terminal.split-horizontal");
+    assert(keyToDetailedActionName("win-close") == "win.close");
+}
+
+/// Test: getActionNameFromKey with no hyphen
+unittest {
+    string prefix, id;
+    getActionNameFromKey("nohyphen", prefix, id);
+    // No hyphen found — both should remain empty (out params init to "")
+    assert(prefix == "");
+    assert(id == "");
+}
+
+/// Test: round-trip — key → name → key
+unittest {
+    string originalKey = "session-add-right";
+    string prefix, id;
+    getActionNameFromKey(originalKey, prefix, id);
+    string reconstructed = getActionKey(prefix, id);
+    assert(reconstructed == originalKey,
+        "round-trip failed: " ~ reconstructed ~ " != " ~ originalKey);
 }

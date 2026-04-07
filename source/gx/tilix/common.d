@@ -123,6 +123,62 @@ unittest {
     assert(directory.length == 0);
 }
 
+/// Test: parsePromptParts with empty string
+unittest {
+    string username, hostname, directory;
+    parsePromptParts("", username, hostname, directory);
+    // out params are initialized to "" by D, and the function
+    // returns immediately for empty input
+    assert(username.length == 0);
+    assert(hostname.length == 0);
+    assert(directory.length == 0);
+}
+
+// --------------------------------------------------------------------------
+// Unit tests for CumulativeResult
+//
+// D lesson — template classes:
+//   `CumulativeResult(T)` is a class template. `T` is a type parameter
+//   that gets substituted at compile time. `CumulativeResult!bool` creates
+//   a class specialized for booleans. This is similar to generics in
+//   Java/C#, but D templates are more powerful — they're resolved at
+//   compile time and can do things generics cannot (like CTFE).
+// --------------------------------------------------------------------------
+
+/// Test: CumulativeResult basic usage
+unittest {
+    auto result = new CumulativeResult!bool();
+    assert(result.getResults().length == 0);
+
+    result.addResult(true);
+    result.addResult(false);
+    assert(result.getResults().length == 2);
+    assert(result.getResults()[0] == true);
+    assert(result.getResults()[1] == false);
+}
+
+/// Test: CumulativeResult.isAnyResult
+unittest {
+    auto result = new CumulativeResult!int();
+    result.addResult(10);
+    result.addResult(20);
+    result.addResult(30);
+
+    assert(result.isAnyResult(20));
+    assert(!result.isAnyResult(99));
+}
+
+/// Test: CumulativeResult with strings
+unittest {
+    auto result = new CumulativeResult!string();
+    result.addResult("hello");
+    result.addResult("world");
+
+    assert(result.isAnyResult("hello"));
+    assert(!result.isAnyResult("missing"));
+    assert(result.getResults() == ["hello", "world"]);
+}
+
 /***********************************************************
  * Block handles common code for allowing actions to be
  * passed up the widget hierarchy to determine if the action

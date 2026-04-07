@@ -25,3 +25,34 @@ unittest {
     assert(escapeCSV("gedit \"test\"") == "\"gedit \"\"test\"\"\"");
     assert(escapeCSV("test,this is") == "\"test,this is\"");
 }
+
+/// Test: escapeCSV with empty string
+unittest {
+    assert(escapeCSV("") == "");
+}
+
+/// Test: escapeCSV with newline — should be quoted
+unittest {
+    assert(escapeCSV("line1\nline2") == "\"line1\nline2\"");
+}
+
+/// Test: escapeCSV with no special characters — no quoting needed
+unittest {
+    assert(escapeCSV("simple text") == "simple text");
+    assert(escapeCSV("12345") == "12345");
+}
+
+/// Test: escapeCSV with only quotes — doubles them and wraps
+unittest {
+    // Input: " (1 char). Step 1: " → "" (2 chars). Step 2: has "" → wrap: """" (4 chars).
+    // In D string literals: each \" is one quote char, so 4 quotes = "\"\"\"\""
+    assert(escapeCSV("\"") == "\"\"\"\"");
+}
+
+/// Test: escapeCSV with comma and quotes combined
+unittest {
+    string result = escapeCSV("a,\"b\"");
+    // First: " → "" gives: a,""b""
+    // Then: has comma and "" → wrapped: "a,""b"""
+    assert(result == "\"a,\"\"b\"\"\"");
+}
