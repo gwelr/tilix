@@ -15,6 +15,9 @@
     },
     "buildTypes": {
         "release": {
+            "dflags": ["-release", "-inline", "-boundscheck=off"],
+            "dflags-dmd": ["-O"],
+            "dflags-ldc": ["-O3"]
         },
         "debug": {
             "debugVersions": ["GC"],

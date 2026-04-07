@@ -14,6 +14,12 @@ else
   d_link_args = []
 endif
 
+# In release builds (debug=false), add D-specific '-release' flag to disable
+# runtime bounds checks and contract assertions for better performance.
+if not get_option('debug')
+  d_extra_args += ['-release']
+endif
+
 project_id = 'com.gexperts.Tilix'
 project_name = meson.project_name()
 
