@@ -6,13 +6,22 @@ on:
   pull_request:
     branches: [ master ]
 
+# Restrict default permissions to read-only.
+# This limits the blast radius if a compromised action tries to
+# modify repo contents, create releases, or exfiltrate secrets.
+permissions:
+  contents: read
+
 jobs:
 
   build-debian-stable:
     name: Debian Stable
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    # Pin actions to commit SHAs to prevent supply chain attacks
+    # via mutable tags. Verify SHAs at:
+    # https://github.com/actions/checkout/tags
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Create Build Environment
       run: cd .github/ci/ && podman build -t ttyx -f ./Dockerfile-debian-stable .
@@ -30,7 +39,7 @@ jobs:
     name: Debian Testing
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Create Build Environment
       run: cd .github/ci/ && podman build -t ttyx -f ./Dockerfile-debian-testing .
@@ -48,7 +57,7 @@ jobs:
     name: Ubuntu LTS
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Create Build Environment
       run: cd .github/ci/ && podman build -t ttyx -f ./Dockerfile-ubuntu-noble .
@@ -69,7 +78,7 @@ jobs:
         matrix:
           dc: [dmd-2.109.1, ldc-latest]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Install System Dependencies
       run: |
@@ -87,8 +96,9 @@ jobs:
                 libpeas-dev \
                 libvte-2.91-dev
 
+    # https://github.com/dlang-community/setup-dlang/tags
     - name: Install D compiler
-      uses: dlang-community/setup-dlang@v2
+      uses: dlang-community/setup-dlang@0a7469b93f791d83f30932c6fd105796c6966e20 # v2.0.0
       with:
         compiler: ${{ matrix.dc }}
 
