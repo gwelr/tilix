@@ -66,17 +66,34 @@ ttyx_ Release Process
    cd /tmp && tar czf ttyx-X.Y.Z_x86_64-linux-gnu.tar.gz -C ttyx-package .
    ```
 
+## Build Flatpak bundle
+
+9. Update the Flatpak manifest tag to the new version:
+   - `flatpak/io.github.gwelr.ttyx.yaml` (change `tag: vX.Y.Z`)
+
+10. Build the Flatpak (requires `flatpak-builder`, GNOME 48 SDK):
+    ```
+    flatpak-builder --user --install-deps-from=flathub --force-clean \
+      builddir-flatpak flatpak/io.github.gwelr.ttyx.yaml
+    flatpak build-bundle ~/.local/share/flatpak/repo \
+      /tmp/ttyx-X.Y.Z_x86_64.flatpak io.github.gwelr.ttyx
+    ```
+
+    See `flatpak/README.md` for prerequisites and theme integration notes.
+
 ## Sign and checksum
 
-9. Generate signed checksums:
-   ```
-   sha256sum /tmp/ttyx-X.Y.Z_x86_64-linux-gnu.tar.gz > /tmp/ttyx-X.Y.Z_SHA256SUMS
-   gpg --clearsign /tmp/ttyx-X.Y.Z_SHA256SUMS
-   ```
+11. Generate signed checksums (include both tarball and Flatpak):
+    ```
+    sha256sum /tmp/ttyx-X.Y.Z_x86_64-linux-gnu.tar.gz \
+              /tmp/ttyx-X.Y.Z_x86_64.flatpak \
+              > /tmp/ttyx-X.Y.Z_SHA256SUMS
+    gpg --clearsign /tmp/ttyx-X.Y.Z_SHA256SUMS
+    ```
 
 ## Publish
 
-10. Create the GitHub release **with all assets in one shot** (do NOT
+12. Create the GitHub release **with all assets in one shot** (do NOT
     upload assets after creation — GitHub's immutable releases will
     block subsequent uploads):
     ```
@@ -85,16 +102,17 @@ ttyx_ Release Process
       --target master \
       --notes-file /path/to/release-notes.md \
       /tmp/ttyx-X.Y.Z_x86_64-linux-gnu.tar.gz \
+      /tmp/ttyx-X.Y.Z_x86_64.flatpak \
       /tmp/ttyx-X.Y.Z_SHA256SUMS.asc
     ```
 
 ## Post-release
 
-11. Bump version to next development version in:
+13. Bump version to next development version in:
     - `meson.build`
     - `source/gx/tilix/constants.d`
 
-12. Commit and push:
+14. Commit and push:
     ```
     git commit -a -m "chore: Post-release version bump to X.Y.Z+1"
     git push
@@ -111,8 +129,14 @@ sha256sum -c ttyx-X.Y.Z_SHA256SUMS.asc 2>/dev/null
 gpg --verify ttyx-X.Y.Z_SHA256SUMS.asc
 ```
 
+Users can install the Flatpak bundle with:
+```
+flatpak install --user ttyx-X.Y.Z_x86_64.flatpak
+```
+
 ## Notes
 
 - All commits and tags are GPG-signed (key: `2CAAD12074F3C056`)
 - CI Actions are pinned to commit SHAs (not mutable tags)
 - Never create a release then try to add assets — always include them at creation time
+- Flatpak builds require GNOME 48 SDK; see `flatpak/README.md` for details

@@ -2946,23 +2946,28 @@ private:
     }
 
     GVariant buildHostCommandVariant(string workingDir, string[] args, string[] envv, uint[] handles) {
+        import gtkc.glib: g_variant_new;
+
         if (workingDir.length == 0) workingDir = Util.getHomeDir();
 
         GVariantBuilder fdBuilder = new GVariantBuilder(new GVariantType("a{uh}"));
         foreach(i, fd; handles) {
-            fdBuilder.addValue(new GVariant(new GVariant(i), new GVariant(g_variant_new_handle(fd), true)));
+            auto entry = new GVariant(g_variant_new("{uh}",
+                cast(uint) i, cast(int) fd), true);
+            fdBuilder.addValue(entry);
         }
         GVariantBuilder envBuilder = new GVariantBuilder(new GVariantType("a{ss}"));
         foreach(env; envv) {
-            string[] envPair = env.split("=");
-            tracef("Adding env var %s=%s", envPair[0], envPair[1]);
-            if (envPair.length ==2) {
-                GVariant pair = new GVariant(new GVariant(envPair[0]), new GVariant(envPair[1]));
-                envBuilder.addValue(pair);
-            }
+            import std.string : indexOf;
+            auto eqPos = env.indexOf('=');
+            if (eqPos < 1) continue;
+            string key = env[0 .. eqPos];
+            string val = env[eqPos + 1 .. $];
+            tracef("Adding env var %s=%s", key, val);
+            auto entry = new GVariant(g_variant_new("{ss}",
+                toStringz(key), toStringz(val)), true);
+            envBuilder.addValue(entry);
         }
-
-        import gtkc.glib: g_variant_new;
 
         immutable(char)* wd = toStringz(workingDir);
         immutable(char)*[] argsv;
@@ -3009,8 +3014,6 @@ private:
             }
 
             GC.removeRoot(cast(void*)args);
-            warning("**********COLLECT**********");
-            GC.collect();
         }
     }
 
@@ -3091,7 +3094,7 @@ private:
     }
 
     /*
-     * A thin wrapper over sendHostCommand that asks the tilix-flatpak-toolbox for information
+     * A thin wrapper over sendHostCommand that asks the ttyx-flatpak-toolbox for information
      * about the host system.
      */
     string captureHostToolboxCommand(string command, string arg, int[] extra_fds) {
@@ -3103,7 +3106,7 @@ private:
         kf.loadFromFile("/.flatpak-info", GKeyFileFlags.NONE);
 
         string hostRoot = kf.getString("Instance", "app-path");
-        string[] args = [format("%s/bin/tilix-flatpak-toolbox", hostRoot), command, arg];
+        string[] args = [format("%s/bin/ttyx-flatpak-toolbox", hostRoot), command, arg];
 
         Pipe output = pipe();
         scope(exit) pipe.close();

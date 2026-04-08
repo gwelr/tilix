@@ -1,0 +1,104 @@
+id: io.github.gwelr.ttyx
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: ttyx
+finish-args:
+  # Display (prefer Wayland, fall back to X11)
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # PTY/terminal device access
+  - --device=all
+  # Host shell execution via flatpak-spawn
+  - --talk-name=org.freedesktop.Flatpak
+  # Secrets (for password storage)
+  - --talk-name=org.freedesktop.secrets
+  # D-Bus own name for single-instance
+  - --own-name=io.github.gwelr.ttyx
+  # DConf access for GSettings
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  # Home directory access (terminal needs to browse files)
+  - --filesystem=home
+
+build-options:
+  append-path: /app/ldc/bin
+  append-ld-library-path: /app/ldc/lib
+
+cleanup:
+  - /ldc
+  - /include
+  - /lib/pkgconfig
+  - /lib/debug
+  - /share/gtk-doc
+  - /share/man
+  - /share/vala
+  - /share/gir-1.0
+  - '*.la'
+  - '*.a'
+
+modules:
+  # LDC compiler (self-contained, statically links LLVM)
+  - name: ldc
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/ldc
+      - mv bin etc import lib LICENSE /app/ldc/
+    sources:
+      - type: archive
+        url: https://github.com/ldc-developers/ldc/releases/download/v1.39.0/ldc2-1.39.0-linux-x86_64.tar.xz
+        sha256: f50cdacd11c923b96e57edab15cacff6a30c7ebff4b7e495fc684eed0a27ae17
+    cleanup:
+      - '*'
+
+  # VTE terminal widget (GTK3 build)
+  - name: vte
+    buildsystem: meson
+    config-opts:
+      - -Dgtk3=true
+      - -Dgtk4=false
+      - -Dvapi=false
+      - -Dgir=false
+      - -D_systemd=false
+      - --libdir=lib
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/vte/0.76/vte-0.76.3.tar.xz
+        sha256: f678e94c056f377fd0021214adff5450cb172e9a08b160911181ddff7b7d5d60
+
+  # GtkD - D language GTK3 bindings
+  - name: gtkd
+    buildsystem: simple
+    build-commands:
+      - make -j${FLATPAK_BUILDER_N_JOBS} prefix=/app install-gtkd install-vte DC=ldc2
+    sources:
+      - type: archive
+        url: https://github.com/gtkd-developers/GtkD/archive/refs/tags/v3.11.0.tar.gz
+        sha256: c5de7ef0d955c06a35bc979858e2b67c17919294a7aabe36fd593b79c46e5928
+
+  # Toolbox helper for flatpak-specific operations (passwd lookup, PID, proc)
+  - name: toolbox
+    buildsystem: simple
+    build-commands:
+      - gcc -o /app/bin/ttyx-flatpak-toolbox ttyx-flatpak-toolbox.c
+    sources:
+      - type: file
+        path: ttyx-flatpak-toolbox.c
+
+  # ttyx_ terminal emulator
+  - name: ttyx
+    buildsystem: meson
+    config-opts:
+      - --buildtype=release
+      - -Dstrip=true
+    post-install:
+      # Copy D runtime shared libs before /ldc cleanup removes them
+      - cp -P /app/ldc/lib/libphobos2-ldc-shared.so* /app/lib/
+      - cp -P /app/ldc/lib/libdruntime-ldc-shared.so* /app/lib/
+    sources:
+      - type: git
+        url: https://github.com/gwelr/ttyx_.git
+        tag: v1.1.0
