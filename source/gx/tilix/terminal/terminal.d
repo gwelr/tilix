@@ -145,6 +145,7 @@ import gx.tilix.terminal.advpaste;
 import gx.tilix.terminal.clipboard;
 import gx.tilix.terminal.context;
 import gx.tilix.terminal.process;
+import gx.tilix.terminal.renderer;
 import gx.tilix.terminal.exvte;
 import gx.tilix.terminal.flatpak;
 import gx.tilix.terminal.layout;
@@ -181,6 +182,7 @@ private:
     TerminalWindowState terminalWindowState = TerminalWindowState.NORMAL;
     ClipboardHandler clipboardHandler;
     TerminalProcessQuery processQuery;
+    TerminalRenderer renderer;
     Button btnMaximize;
 
     SearchRevealer rFind;
@@ -787,7 +789,7 @@ private:
 
         // Toggle margin
         registerActionWithSettings(group, ACTION_PREFIX, ACTION_TOGGLE_MARGIN, gsShortcuts, delegate(GVariant value, SimpleAction sa) {
-            marginEnabled = !marginEnabled;
+            renderer.toggleMargin();
             vte.queueDraw();
         }, null, null);
 
@@ -806,10 +808,10 @@ private:
         Popover pm = new Popover(parent);
         // Force VTE to redraw on showing/hiding of popover if dimUnfocused is active
         pm.addOnMap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pm.addOnUnmap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pm.bindModel(model, null);
         return pm;
@@ -1092,10 +1094,10 @@ private:
         pmContext.setPosition(PositionType.BOTTOM);
         // Force VTE to redraw on showing/hiding of popover if dimUnfocused is active
         pmContext.addOnMap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pmContext.addOnUnmap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pmContext.addOnClosed(delegate(Popover) {
             // See #305 for more info on why this is here
@@ -1256,6 +1258,7 @@ private:
         badge = getDisplayText(badge);
         if (badge != _cachedBadge) {
             _cachedBadge = badge;
+            renderer.setBadgeText(badge);
             vte.queueDraw();
         }
     }
@@ -2016,7 +2019,7 @@ private:
         //Fire focus events so session can track which terminal last had focus
         onFocusIn.emit(this);
         // Set colors for dimPercent
-        setVTEColors();
+        renderer.setVTEColors();
     }
 
     /**
@@ -2034,31 +2037,13 @@ private:
             bTitle.unsetStateFlags(StateFlags.ACTIVE);
         }
         // Set colors for dimPercent
-        setVTEColors();
+        renderer.setVTEColors();
     }
 
     // Preferences go here
 private:
 
-    enum VTEColorSet {normal, dim}
-
-    RGBA vteFG;
-    RGBA dimFG;
-    RGBA vteBG;
-    RGBA vteBGClear;
-    RGBA vteHighlightFG;
-    RGBA vteHighlightBG;
-    RGBA vteCursorFG;
-    RGBA vteCursorBG;
-    RGBA vteDimBG;
-    RGBA[16] vtePalette;
-    RGBA[16] dimPalette;
-    RGBA vteBadge;
-    RGBA vteBold;
-    RGBA dimBold;
-    double dimPercent;
-
-    VTEColorSet currentColorSet = VTEColorSet.normal;
+    /* Color state and methods moved to gx.tilix.terminal.renderer.TerminalRenderer */
 
     /**
      * CSSProvider to enhance terminal scrollbar
@@ -2069,73 +2054,6 @@ private:
      * Handler ID for scroll-event
      */
     gulong scrollEventHandlerId;
-
-    void initColors() {
-        vteFG = new RGBA();
-        dimFG = new RGBA();
-        vteBG = new RGBA();
-        vteHighlightFG = new RGBA();
-        vteHighlightBG = new RGBA();
-        vteCursorFG = new RGBA();
-        vteCursorBG = new RGBA();
-        vteDimBG = new RGBA();
-        vteBadge = new RGBA();
-        vteBold = new RGBA();
-        dimBold = new RGBA();
-
-        vtePalette = new RGBA[16];
-        dimPalette = new RGBA[16];
-        for (int i = 0; i < 16; i++) {
-            vtePalette[i] = new RGBA();
-            dimPalette[i] = new RGBA();
-        }
-    }
-
-    void dimColor(RGBA original, RGBA dim, double cf) {
-        double r, g, b;
-        adjustColor(cf, original, r, g, b);
-        dim.red = r;
-        dim.green = g;
-        dim.blue = b;
-        dim.alpha = original.alpha;
-    }
-
-    void updateDimColors() {
-        double cf = (vteBG.red + vteBG.green + vteBG.blue > 1.5)?dimPercent:-dimPercent;
-        dimColor(vteFG, dimFG, cf);
-        dimColor(vteBold, dimBold, cf);
-        foreach(i, color; vtePalette) {
-            dimColor(color, dimPalette[i], cf);
-        }
-    }
-
-    void setBoldColor(RGBA color) {
-        if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_BOLD_COLOR_KEY)) {
-            vte.setColorBold(color);
-        } else {
-            vte.setColorBold(null);
-        }
-    }
-
-    void setVTEColors(bool force = false) {
-        // Determine colorset needed and only set if different
-        VTEColorSet desired = (isTerminalWidgetFocused() || dimPercent == 0)? VTEColorSet.normal: VTEColorSet.dim;
-        if (desired == currentColorSet && !force) return;
-
-//        tracef("vteBGUsed: %f, %f, %f, %f", vteBG.red, vteBG.green, vteBG.blue, vteBG.alpha);
-        if (isTerminalWidgetFocused() || dimPercent == 0) {
-//            tracef("vteFG: %f, %f, %f", vteFG.red, vteFG.green, vteFG.blue);
-            vte.setColors(vteFG, vteBG, vtePalette);
-            setBoldColor(vteBold);
-            currentColorSet = VTEColorSet.normal;
-        } else {
-//            tracef("dimFG: %f, %f, %f", dimFG.red, dimFG.green, dimFG.blue);
-            vte.setColors(dimFG, vteBG, dimPalette);
-            setBoldColor(dimBold);
-            currentColorSet = VTEColorSet.dim;
-        }
-        applySecondaryColorPreferences();
-    }
 
     /**
      * Updates a setting based on the passed key. Note that using gio.Settings.bind
@@ -2161,28 +2079,8 @@ private:
             break;
         case SETTINGS_PROFILE_FG_COLOR_KEY, SETTINGS_PROFILE_BG_COLOR_KEY, SETTINGS_PROFILE_PALETTE_COLOR_KEY, SETTINGS_PROFILE_USE_THEME_COLORS_KEY,
         SETTINGS_PROFILE_BG_TRANSPARENCY_KEY, SETTINGS_PROFILE_DIM_TRANSPARENCY_KEY:
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_THEME_COLORS_KEY)) {
-                getStyleColor(vte.getStyleContext(), StateFlags.ACTIVE, vteFG);
-                getStyleBackgroundColor(vte.getStyleContext(), StateFlags.ACTIVE, vteBG);
-            } else {
-            if (!vteFG.parse(gsProfile.getString(SETTINGS_PROFILE_FG_COLOR_KEY)))
-                trace("Parsing foreground color failed");
-            if (!vteBG.parse(gsProfile.getString(SETTINGS_PROFILE_BG_COLOR_KEY)))
-                trace("Parsing background color failed");
-            }
-            vteBG.alpha = to!double(100 - gsProfile.getInt(SETTINGS_PROFILE_BG_TRANSPARENCY_KEY)) / 100.0;
-            string[] colors = gsProfile.getStrv(SETTINGS_PROFILE_PALETTE_COLOR_KEY);
-            foreach (i, color; colors) {
-                if (!vtePalette[i].parse(color)) {
-                    trace("Parsing color failed " ~ colors[i]);
-                }
-            }
-            dimPercent = to!double(gsProfile.getInt(SETTINGS_PROFILE_DIM_TRANSPARENCY_KEY)) / 100.0;
-            updateDimColors();
-            setVTEColors(true);
-
-            // Enhance scrollbar for supported themes, requires a theme specific css file in
-            // tilix resources
+            renderer.applyMainColors();
+            // Enhance scrollbar for supported themes
             if (!useOverlayScrollbar) {
                 if (sbProvider !is null) {
                     sb.getStyleContext().removeProvider(sbProvider);
@@ -2190,8 +2088,8 @@ private:
                 }
                 string theme = getGtkTheme();
                 string[string] variables;
-                variables["$TERMINAL_BG"] = rgbaTo8bitHex(vteBG,false,true);
-                variables["$TERMINAL_OPACITY"] = to!string(vteBG.alpha);
+                variables["$TERMINAL_BG"] = rgbaTo8bitHex(renderer.vteBG, false, true);
+                variables["$TERMINAL_OPACITY"] = to!string(renderer.vteBG.alpha);
                 sbProvider = createCssProvider(APPLICATION_RESOURCE_ROOT ~ "/css/tilix." ~ theme ~ ".scrollbar.css", variables);
                 if (sbProvider !is null) {
                     sb.getStyleContext().addProvider(sbProvider, ProviderPriority.APPLICATION);
@@ -2199,34 +2097,13 @@ private:
             }
             break;
         case SETTINGS_PROFILE_BOLD_COLOR_KEY, SETTINGS_PROFILE_USE_BOLD_COLOR_KEY:
-            string boldColor = gsProfile.getString(SETTINGS_PROFILE_BOLD_COLOR_KEY);
-            if (!vteBold.parse(boldColor)) {
-                error("Parsing Bold color failed");
-            }
-            updateDimColors();
-            setVTEColors(true);
+            renderer.applyBoldColor();
             break;
         case SETTINGS_PROFILE_USE_HIGHLIGHT_COLOR_KEY, SETTINGS_PROFILE_HIGHLIGHT_FG_COLOR_KEY, SETTINGS_PROFILE_HIGHLIGHT_BG_COLOR_KEY:
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_HIGHLIGHT_COLOR_KEY)) {
-                vteHighlightFG.parse(gsProfile.getString(SETTINGS_PROFILE_HIGHLIGHT_FG_COLOR_KEY));
-                vteHighlightBG.parse(gsProfile.getString(SETTINGS_PROFILE_HIGHLIGHT_BG_COLOR_KEY));
-                vte.setColorHighlightForeground(vteHighlightFG);
-                vte.setColorHighlight(vteHighlightBG);
-            } else {
-                vte.setColorHighlightForeground(null);
-                vte.setColorHighlight(null);
-            }
+            renderer.applySecondaryColors();
             break;
         case SETTINGS_PROFILE_USE_CURSOR_COLOR_KEY, SETTINGS_PROFILE_CURSOR_FG_COLOR_KEY, SETTINGS_PROFILE_CURSOR_BG_COLOR_KEY:
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_CURSOR_COLOR_KEY)) {
-                vteCursorFG.parse(gsProfile.getString(SETTINGS_PROFILE_CURSOR_FG_COLOR_KEY));
-                vteCursorBG.parse(gsProfile.getString(SETTINGS_PROFILE_CURSOR_BG_COLOR_KEY));
-                vte.setColorCursorForeground(vteCursorFG);
-                vte.setColorCursor(vteCursorBG);
-            } else {
-                vte.setColorCursorForeground(null);
-                vte.setColorCursor(null);
-            }
+            renderer.applySecondaryColors();
             break;
         case SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY:
             if (useOverlayScrollbar) {
@@ -2280,7 +2157,7 @@ private:
                 desc.setSize(10);
             // If we are drawing badges and using system font, invalidate badge font before setting new font
             vte.setFont(desc);
-            updateBadgeFont();
+            renderer.updateBadgeFont();
             break;
         case SETTINGS_AUTO_HIDE_MOUSE_KEY:
             vte.setMouseAutohide(gsSettings.getBoolean(SETTINGS_AUTO_HIDE_MOUSE_KEY));
@@ -2315,16 +2192,8 @@ private:
             }
             break;
         case SETTINGS_PROFILE_BADGE_COLOR_KEY, SETTINGS_PROFILE_USE_BADGE_COLOR_KEY:
-            if (isVTEBackgroundDrawEnabled()) {
-                string badgeColor;
-                if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_BADGE_COLOR_KEY)) {
-                    badgeColor = gsProfile.getString(SETTINGS_PROFILE_BADGE_COLOR_KEY);
-                } else {
-                    badgeColor = gsProfile.getString(SETTINGS_PROFILE_FG_COLOR_KEY);
-                }
-                if (!vteBadge.parse(badgeColor)) tracef("Failed to parse badge color %s", badgeColor);
-                queueDraw();
-            }
+            renderer.applyBadgeColor();
+            queueDraw();
             break;
         case SETTINGS_PROFILE_BADGE_POSITION_KEY:
             queueDraw();
@@ -2370,26 +2239,19 @@ private:
             break;
         case SETTINGS_PROFILE_MARGIN_KEY:
             if (vte !is null && isVTEBackgroundDrawEnabled()) {
-                margin = gsProfile.getInt(SETTINGS_PROFILE_MARGIN_KEY);
+                renderer.setMargin(gsProfile.getInt(SETTINGS_PROFILE_MARGIN_KEY));
                 vte.queueDraw();
             }
             break;
         case SETTINGS_PROFILE_BADGE_USE_SYSTEM_FONT_KEY, SETTINGS_PROFILE_BADGE_FONT_KEY:
-            updateBadgeFont();
+            renderer.updateBadgeFont();
             break;
         default:
             break;
         }
     }
 
-    /**
-     * Fix for #855 where these secondary colors get reset after changing fg, bg or palette
-     * Also see: https://bugzilla.gnome.org/show_bug.cgi?id=781369
-     */
-    void applySecondaryColorPreferences() {
-        applyPreference(SETTINGS_PROFILE_CURSOR_FG_COLOR_KEY);
-        applyPreference(SETTINGS_PROFILE_HIGHLIGHT_FG_COLOR_KEY);
-    }
+    /* applySecondaryColorPreferences moved to renderer.applySecondaryColors() */
 
     /**
      * Applies all preferences, used when terminal widget is first started to configure it
@@ -2883,7 +2745,13 @@ private:
     // with terminal DND
 private:
 
-    DragInfo dragInfo = DragInfo(false, DragQuadrant.LEFT);
+    DragInfo _dragInfo = DragInfo(false, DragQuadrant.LEFT);
+
+    /// Update dragInfo and sync to renderer for draw callback.
+    void setDragInfo(DragInfo info) {
+        _dragInfo = info;
+        if (renderer !is null) renderer.setDragInfo(info);
+    }
     bool isRootWindow = false;
     static if (USE_PIXBUF_DND) {
         Pixbuf dragImage;
@@ -2927,9 +2795,9 @@ private:
         }
         //TODO - Figure out why this is causing issues, see #545
         if (isVTEBackgroundDrawEnabled()) {
-            vte.addOnDraw(&onVTEDrawBadge);
+            vte.addOnDraw(&renderer.onDrawBadge);
         }
-        vte.addOnDraw(&onVTEDraw, ConnectFlags.AFTER);
+        vte.addOnDraw(&renderer.onDrawDragHighlight, ConnectFlags.AFTER);
 
         trace("Drag and drop completed");
     }
@@ -3065,7 +2933,7 @@ private:
         }
         DragQuadrant dq = getDragQuadrant(x, y, vte);
 
-        dragInfo = DragInfo(true, dq);
+        setDragInfo(DragInfo(true, dq));
         vte.queueDraw();
         //Uncomment this if debugging motion otherwise generates annoying amount of trace noise
         tracef("Drag motion: %s %d, %d, %d", _terminalUUID, x, y, dq);
@@ -3075,7 +2943,7 @@ private:
 
     void onVTEDragLeave(DragContext, uint, Widget) {
         trace("Drag Leave " ~ _terminalUUID);
-        dragInfo = DragInfo(false, DragQuadrant.LEFT);
+        setDragInfo(DragInfo(false, DragQuadrant.LEFT));
         vte.queueDraw();
     }
 
@@ -3183,7 +3051,7 @@ private:
             DragQuadrant dq = getDragQuadrant(x, y, vte);
             tracef("Receiving Terminal %s, Dropped terminal %s, x=%d, y=%d, dq=%d", _terminalUUID, uuid, x, y, dq);
             notifyTerminalRequestMove(uuid, this, dq);
-            dragInfo = DragInfo(false, dq);
+            setDragInfo(DragInfo(false, dq));
             break;
         case DropTargets.SESSION:
             string uuid = to!string(data.getDataWithLength()[0 .. $ - 1]);
@@ -3192,198 +3060,7 @@ private:
         }
     }
 
-    static const uint BADGE_MARGIN = 10;
-
-    static double[] marginDash = [2.0, 4.0];
-
-    PgFontDescription badgeFont = null;
-
-    int margin = 0;
-    bool marginEnabled = false;
-
-    static if (COMPILE_VTE_BACKGROUND_COLOR) {
-        RGBA drawBG;
-    }
-
-    void updateBadgeFont() {
-        if (vte is null || !isVTEBackgroundDrawEnabled()) return;
-        if (gsProfile.getBoolean(SETTINGS_PROFILE_BADGE_USE_SYSTEM_FONT_KEY)) {
-            badgeFont = vte.getFont().copy();
-            badgeFont.setSize(badgeFont.getSize() * 2);
-        } else {
-            badgeFont = PgFontDescription.fromString(gsProfile.getString(SETTINGS_PROFILE_BADGE_FONT_KEY));
-        }
-        tracef("Badge font is %s:%d", badgeFont.getFamily(), badgeFont.getSize());
-        vte.queueDraw();
-    }
-
-    bool onVTEDrawBadge(Scoped!Context cr, Widget w) {
-        cr.save();
-        double width = to!double(w.getAllocatedWidth());
-        double height = to!double(w.getAllocatedHeight());
-
-        // Only draw background if vte background draw is disabled
-        if (isVTEBackgroundDrawEnabled()) {
-            static if (COMPILE_VTE_BACKGROUND_COLOR) {
-                if (checkVTEVersion(VTE_VERSION_BACKGROUND_GET_COLOR)) {
-                    if (drawBG is null) drawBG = new RGBA();
-                    vte.getColorBackgroundForDraw(drawBG);
-                } else {
-                    drawBG = vteBG;
-                }
-                //tracef("Draw background: %f, %f, %f, %f", vteBG.red, vteBG.green, vteBG.blue, vteBG.alpha);
-                cr.setSourceRgba(drawBG.red, drawBG.green, drawBG.blue, drawBG.alpha);
-            } else {
-                cr.setSourceRgba(vteBG.red, vteBG.green, vteBG.blue, vteBG.alpha);
-            }
-            cr.setOperator(cairo_operator_t.SOURCE);
-            cr.rectangle(0.0, 0.0, width, height);
-            cr.clip();
-            cr.paint();
-            cr.resetClip();
-        }
-        //Draw Margin line
-        if (margin > 0 && marginEnabled) {
-            double r, g, b;
-            contrast(0.40, vteFG, r, g, b);
-            cr.setSourceRgba(r, g, b, 1.0);
-            cr.setDash(marginDash, 0.0);
-            cr.moveTo(vte.getCharWidth() * margin, 0);
-            cr.lineTo(vte.getCharWidth() * margin, height);
-            cr.stroke();
-        }
-
-        //Draw badge if badge text is available
-        if (_cachedBadge.length > 0 && badgeFont !is null) {
-            // Paint badge
-            // Use same alpha as background color to match transparency slider
-            //cr.setSourceRgba(vteBadge.red, vteBadge.green, vteBadge.blue, vteBG.alpha);
-            cr.setSourceRgba(vteBadge.red, vteBadge.green, vteBadge.blue, 1.0);
-
-            // Create rect for default NW position
-            GdkRectangle rect = GdkRectangle(BADGE_MARGIN, BADGE_MARGIN, to!int(width/2) - BADGE_MARGIN, to!int(height/2) - BADGE_MARGIN);
-            string position = gsProfile.getString(SETTINGS_PROFILE_BADGE_POSITION_KEY);
-            //Adjust coords of rect for other positions
-            switch (position) {
-                case SETTINGS_QUADRANT_NE_VALUE:
-                    rect.x = to!int(width/2) + BADGE_MARGIN;
-                    break;
-                case SETTINGS_QUADRANT_SW_VALUE:
-                    rect.y = to!int(height/2) + BADGE_MARGIN;
-                    break;
-                case SETTINGS_QUADRANT_SE_VALUE:
-                    rect.x = to!int(width/2) + BADGE_MARGIN;
-                    rect.y = to!int(height/2) + BADGE_MARGIN;
-                    break;
-                default:
-            }
-
-            //PgLayout pgl = PgCairo.createLayout(cr);
-            PgLayout pgl = new PgLayout(vte.getPangoContext());
-            pgl.setFontDescription(badgeFont);
-            pgl.setText(_cachedBadge);
-            pgl.setWidth(rect.width * PANGO_SCALE);
-            pgl.setHeight(rect.height * PANGO_SCALE);
-
-            int pw, ph;
-            pgl.getPixelSize(pw, ph);
-
-            /**************************************************
-            /* Old code where we auto-sized the badge,
-            /* leave it here in case we want to bring it back
-
-            //Hack, deduct 0.2 from ratio to make sure text will fit when painted
-            /*
-            double fontRatio = min(to!double(rect.width)/to!double(pw) - 0.2, to!double(rect.height)/to!double(ph));
-            // If a bigger font fits, then increase it
-            if (fontRatio > 1 && defaultFont) {
-                int fontSize = to!int(floor(fontRatio * badgeFont.getSize()));
-                badgeFont.setSize(fontSize);
-                pgl.setFontDescription(badgeFont);
-                //tracef("Width %d, Pixel Width %d, Pixel Height %d, Original Font ratio %f, Font size %d", rect.width, pw, ph, fontRatio, fontSize);
-                pgl.getPixelSize(pw, ph);
-            } else {
-                pgl.setWrap(PangoWrapMode.WORD_CHAR);
-            }
-            */
-             /**************************************************/
-
-             pgl.setWrap(PangoWrapMode.WORD_CHAR);
-
-            switch (position) {
-                case SETTINGS_QUADRANT_NE_VALUE:
-                    pgl.setAlignment(PangoAlignment.RIGHT);
-                    break;
-                case SETTINGS_QUADRANT_SW_VALUE:
-                    rect.y = rect.y + rect.height - ph;
-                    break;
-                case SETTINGS_QUADRANT_SE_VALUE:
-                    rect.y = rect.y + rect.height - ph;
-                    pgl.setAlignment(PangoAlignment.RIGHT);
-                    break;
-                default:
-            }
-
-            cr.rectangle(rect.x, rect.y, rect.width, rect.height);
-            cr.clip();
-            cr.moveTo(rect.x, rect.y);
-
-            PgCairo.showLayout(cr, pgl);
-
-            cr.resetClip();
-        }
-        cr.restore();
-        return false;
-    }
-
-
-    enum STROKE_WIDTH = 4;
-
-    //Draw the drag hint if dragging is occurring
-    bool onVTEDraw(Scoped!Context cr, Widget widget) {
-        /*
-        if (dimPercent > 0) {
-            Window window = cast(Window) getToplevel();
-            bool windowActive = (window is null)?false:window.isActive();
-            if (!windowActive || (!vte.isFocus() && !rFind.isSearchEntryFocus() && !pmContext.isVisible() && !mbTitle.getPopover().isVisible())) {
-                cr.setSourceRgba(vteDimBG.red, vteDimBG.green, vteDimBG.blue, dimPercent);
-                cr.setOperator(cairo_operator_t.ATOP);
-                cr.paint();
-            }
-        }
-        */
-        //Dragging happening?
-        if (!dragInfo.isDragActive)
-            return false;
-
-        RGBA color;
-
-        if (!vte.getStyleContext().lookupColor("theme_selected_bg_color", color)) {
-            getStyleBackgroundColor(vte.getStyleContext(), StateFlags.SELECTED, color);
-        }
-        cr.setSourceRgba(color.red, color.green, color.blue, 1.0);
-        cr.setLineWidth(STROKE_WIDTH);
-        int w = widget.getAllocatedWidth();
-        int h = widget.getAllocatedHeight();
-        int offset = STROKE_WIDTH;
-        final switch (dragInfo.dq) {
-        case DragQuadrant.LEFT:
-            cr.rectangle(offset, offset, w / 2, h - (offset * 2));
-            break;
-        case DragQuadrant.TOP:
-            cr.rectangle(offset, offset, w - (offset * 2), h / 2);
-            break;
-        case DragQuadrant.BOTTOM:
-            cr.rectangle(offset, h / 2, w - (offset * 2), h / 2 - offset);
-            break;
-        case DragQuadrant.RIGHT:
-            cr.rectangle(w / 2, offset, w / 2, h - (offset * 2));
-            break;
-        }
-        cr.strokePreserve();
-        //cr.fill();
-        return false;
-    }
+    /* Badge, margin, color, and draw methods moved to gx.tilix.terminal.renderer.TerminalRenderer */
 
     //Save terminal output functionality
 private:
@@ -3509,7 +3186,6 @@ public:
             finalizeTerminal();
         });
         gst = new GlobalTerminalState();
-        initColors();
         if (requestedUUID == null) {
             _terminalUUID = randomUUID().toString();
         } else {
@@ -3544,6 +3220,7 @@ public:
         createUI();
         trace("Apply preferences");
         applyPreferences();
+        renderer = new TerminalRenderer(this, &isTerminalWidgetFocused);
         clipboardHandler = new ClipboardHandler(this, this, &scrollToBottom, &focusTerminal);
         processQuery = new TerminalProcessQuery(this);
         trace("Profile Event Handler");
