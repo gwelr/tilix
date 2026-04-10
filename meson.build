@@ -69,6 +69,7 @@ tilix_sources = [
     'source/gx/tilix/terminal/context.d',
     'source/gx/tilix/terminal/flatpak.d',
     'source/gx/tilix/terminal/regex.d',
+    'source/gx/tilix/terminal/renderer.d',
     'source/gx/tilix/terminal/search.d',
     'source/gx/tilix/terminal/state.d',
     'source/gx/tilix/terminal/terminal.d',
