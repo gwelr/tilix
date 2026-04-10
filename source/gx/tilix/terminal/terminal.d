@@ -146,6 +146,7 @@ import gx.tilix.terminal.clipboard;
 import gx.tilix.terminal.context;
 import gx.tilix.terminal.process;
 import gx.tilix.terminal.renderer;
+import gx.tilix.terminal.spawn;
 import gx.tilix.terminal.exvte;
 import gx.tilix.terminal.flatpak;
 import gx.tilix.terminal.layout;
@@ -2522,7 +2523,7 @@ private:
             if (workingDir.length > 0) {
                 envv ~= ["PWD=" ~ workingDir];
             }
-            setProxyEnv(envv);
+            setProxyEnv(gsSettings, tilix.getProxySettings(), envv);
 
             /*
             // To make this work the terminal has to be added to the widget
@@ -2571,31 +2572,7 @@ private:
 
     enum O_CLOEXEC = 0x80000;
 
-    /**
-     * In a Flatpak environment, vte.getUserShell() will return the shell *inside* the Flatpak,
-     * which isn't the user's shell. Instead, getent must be used to get the proper shell.
-     */
-    string getHostShell() {
-        import core.sys.posix.unistd: getuid;
-
-        string uid = to!string(getuid());
-        tracef("Asking toolbox for shell", uid);
-
-        string passwd = captureHostToolboxCommand("get-passwd", to!string(uid), []);
-
-        if (passwd == null) {
-            warning("Failed to get host passwd entry");
-            return null;
-        }
-
-        string shell = passwd.split(":")[6];
-        if (shell.length == 0) {
-            warning("Host shell is empty from passwd: %s", passwd);
-            return null;
-        }
-
-        return shell.length > 0 ? shell : null;
-    }
+    /* getHostShell moved to gx.tilix.terminal.spawn */
 
     /**
      * Needed spawnSync function to handle flatpak where we need to generate out VtePty in order
@@ -2681,62 +2658,7 @@ private:
 
     /* Flatpak host command functions moved to gx.tilix.terminal.flatpak */
 
-    /**
-     * Sets the proxy environment variables in the shell if available in gnome-terminal.
-     * Note this only works with manual proxy settings.
-     */
-    void setProxyEnv(ref string[] envv) {
-
-        void addProxy(GSettings gsProxy, string scheme, string urlScheme, string varName) {
-            GSettings gsProxyScheme = gsProxy.getChild(scheme);
-
-            string host = gsProxyScheme.getString("host");
-            int port = gsProxyScheme.getInt("port");
-            if (host.length == 0 || port == 0) return;
-
-            // Strip protocol prefix if already present in the host value
-            foreach (prefix; ["http://", "https://", "socks://", "ftp://"]) {
-                if (host.startsWith(prefix)) {
-                    host = host[prefix.length .. $];
-                    break;
-                }
-            }
-
-            string value = urlScheme ~ "://";
-            if (scheme == "http") {
-                if (gsProxyScheme.getBoolean("use-authentication")) {
-                    string user = gsProxyScheme.getString("authentication-user");
-                    string pw = gsProxyScheme.getString("authentication-password");
-                    if (user.length > 0) {
-                        value = value ~ "@" ~ user;
-                        if (pw.length > 0) {
-                            value = value ~ ":" ~ pw;
-                        }
-                        value = value ~ "@";
-                    }
-                }
-            }
-
-            value = value ~ format("%s:%d/", host, port);
-            envv ~= format("%s=%s",varName,value);
-        }
-
-
-        if (!gsSettings.getBoolean(SETTINGS_SET_PROXY_ENV_KEY)) return;
-
-        GSettings gsProxy = tilix.getProxySettings();
-        if (gsProxy is null) return;
-        if (gsProxy.getString("mode") != "manual") return;
-        addProxy(gsProxy, "http", "http", "http_proxy");
-        addProxy(gsProxy, "https", "http", "https_proxy");
-        addProxy(gsProxy, "ftp", "http", "ftp_proxy");
-        addProxy(gsProxy, "socks", "socks", "all_proxy");
-
-        string[] ignore = gsProxy.getStrv("ignore-hosts");
-        if (ignore.length > 0) {
-            envv ~= "no_proxy=" ~ join(ignore, ",");
-        }
-    }
+    /* setProxyEnv moved to gx.tilix.terminal.spawn */
 
     // Code to move terminals through Drag And Drop (DND) is in this private block
     // Keep all DND code here and do not intermix with other blocks

@@ -71,6 +71,7 @@ tilix_sources = [
     'source/gx/tilix/terminal/regex.d',
     'source/gx/tilix/terminal/renderer.d',
     'source/gx/tilix/terminal/search.d',
+    'source/gx/tilix/terminal/spawn.d',
     'source/gx/tilix/terminal/state.d',
     'source/gx/tilix/terminal/terminal.d',
     'source/gx/tilix/terminal/types.d',
