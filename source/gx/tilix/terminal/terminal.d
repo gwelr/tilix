@@ -184,6 +184,7 @@ private:
     ClipboardHandler clipboardHandler;
     TerminalProcessQuery processQuery;
     TerminalRenderer renderer;
+    PreferenceRegistry prefRegistry;
     Button btnMaximize;
 
     SearchRevealer rFind;
@@ -2056,32 +2057,33 @@ private:
      */
     gulong scrollEventHandlerId;
 
-    /**
-     * Updates a setting based on the passed key. Note that using gio.Settings.bind
-     * would have been very viable here to handle configuration changes but the VTE widget
-     * has so few binable properties it's just easier to handle everything consistently.
-     */
+    /// Dispatch a preference change through the registry.
     void applyPreference(string key) {
         if (vte is null) return;
+        prefRegistry.apply(key);
+    }
 
-        switch (key) {
-        case SETTINGS_PROFILE_TERMINAL_BELL_KEY:
-            string value = gsProfile.getString(SETTINGS_PROFILE_TERMINAL_BELL_KEY);
-            vte.setAudibleBell(value == SETTINGS_PROFILE_TERMINAL_BELL_SOUND_VALUE || value == SETTINGS_PROFILE_TERMINAL_BELL_ICON_SOUND_VALUE);
-            break;
-        case SETTINGS_PROFILE_ALLOW_BOLD_KEY:
-            vte.setAllowBold(gsProfile.getBoolean(SETTINGS_PROFILE_ALLOW_BOLD_KEY));
-            break;
-        case SETTINGS_PROFILE_REWRAP_KEY:
-            vte.setRewrapOnResize(gsProfile.getBoolean(SETTINGS_PROFILE_REWRAP_KEY));
-            break;
-        case SETTINGS_PROFILE_CURSOR_SHAPE_KEY:
-            vte.setCursorShape(getCursorShape(gsProfile.getString(SETTINGS_PROFILE_CURSOR_SHAPE_KEY)));
-            break;
-        case SETTINGS_PROFILE_FG_COLOR_KEY, SETTINGS_PROFILE_BG_COLOR_KEY, SETTINGS_PROFILE_PALETTE_COLOR_KEY, SETTINGS_PROFILE_USE_THEME_COLORS_KEY,
-        SETTINGS_PROFILE_BG_TRANSPARENCY_KEY, SETTINGS_PROFILE_DIM_TRANSPARENCY_KEY:
+    /// Apply all registered preferences (used at startup).
+    void applyPreferences() {
+        prefRegistry.applyAll();
+    }
+
+    /**
+     * Register all preference handlers. Each component registers the keys
+     * it cares about. Terminal registers handlers for VTE-direct settings
+     * and UI concerns. Components register their own handlers.
+     */
+    void registerPreferenceHandlers() {
+        // --- Renderer-owned preferences (colors, badge, margin) ---
+        renderer.registerPreferences(prefRegistry);
+
+        // Colors: also update scrollbar CSS after renderer applies colors
+        prefRegistry.register([
+            SETTINGS_PROFILE_FG_COLOR_KEY, SETTINGS_PROFILE_BG_COLOR_KEY,
+            SETTINGS_PROFILE_PALETTE_COLOR_KEY, SETTINGS_PROFILE_USE_THEME_COLORS_KEY,
+            SETTINGS_PROFILE_BG_TRANSPARENCY_KEY, SETTINGS_PROFILE_DIM_TRANSPARENCY_KEY
+        ], {
             renderer.applyMainColors();
-            // Enhance scrollbar for supported themes
             if (!useOverlayScrollbar) {
                 if (sbProvider !is null) {
                     sb.getStyleContext().removeProvider(sbProvider);
@@ -2096,17 +2098,117 @@ private:
                     sb.getStyleContext().addProvider(sbProvider, ProviderPriority.APPLICATION);
                 }
             }
-            break;
-        case SETTINGS_PROFILE_BOLD_COLOR_KEY, SETTINGS_PROFILE_USE_BOLD_COLOR_KEY:
-            renderer.applyBoldColor();
-            break;
-        case SETTINGS_PROFILE_USE_HIGHLIGHT_COLOR_KEY, SETTINGS_PROFILE_HIGHLIGHT_FG_COLOR_KEY, SETTINGS_PROFILE_HIGHLIGHT_BG_COLOR_KEY:
-            renderer.applySecondaryColors();
-            break;
-        case SETTINGS_PROFILE_USE_CURSOR_COLOR_KEY, SETTINGS_PROFILE_CURSOR_FG_COLOR_KEY, SETTINGS_PROFILE_CURSOR_BG_COLOR_KEY:
-            renderer.applySecondaryColors();
-            break;
-        case SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_BADGE_POSITION_KEY], { queueDraw(); });
+
+        prefRegistry.register([SETTINGS_PROFILE_MARGIN_KEY], {
+            if (vte !is null && isVTEBackgroundDrawEnabled()) {
+                renderer.setMargin(gsProfile.getInt(SETTINGS_PROFILE_MARGIN_KEY));
+                vte.queueDraw();
+            }
+        });
+
+        // --- VTE-direct preferences (gid migration will touch these) ---
+        prefRegistry.register([SETTINGS_PROFILE_TERMINAL_BELL_KEY], {
+            string value = gsProfile.getString(SETTINGS_PROFILE_TERMINAL_BELL_KEY);
+            vte.setAudibleBell(value == SETTINGS_PROFILE_TERMINAL_BELL_SOUND_VALUE || value == SETTINGS_PROFILE_TERMINAL_BELL_ICON_SOUND_VALUE);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_ALLOW_BOLD_KEY], {
+            vte.setAllowBold(gsProfile.getBoolean(SETTINGS_PROFILE_ALLOW_BOLD_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_REWRAP_KEY], {
+            vte.setRewrapOnResize(gsProfile.getBoolean(SETTINGS_PROFILE_REWRAP_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CURSOR_SHAPE_KEY], {
+            vte.setCursorShape(getCursorShape(gsProfile.getString(SETTINGS_PROFILE_CURSOR_SHAPE_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY], {
+            scrollOnOutput = gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY);
+            vte.setScrollOnOutput(scrollOnOutput);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY], {
+            vte.setScrollOnKeystroke(gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY, SETTINGS_PROFILE_SCROLLBACK_LINES_KEY], {
+            auto scrollLines = gsProfile.getBoolean(SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY) ? -1 : gsProfile.getInt(SETTINGS_PROFILE_SCROLLBACK_LINES_KEY);
+            vte.setScrollbackLines(scrollLines);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_BACKSPACE_BINDING_KEY], {
+            vte.setBackspaceBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_BACKSPACE_BINDING_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_DELETE_BINDING_KEY], {
+            vte.setDeleteBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_DELETE_BINDING_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_ENCODING_KEY], {
+            vte.setEncoding(gsProfile.getString(SETTINGS_PROFILE_ENCODING_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CJK_WIDTH_KEY], {
+            vte.setCjkAmbiguousWidth(to!int(countUntil(SETTINGS_PROFILE_CJK_WIDTH_VALUES, gsProfile.getString(SETTINGS_PROFILE_CJK_WIDTH_KEY))) + 1);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY], {
+            vte.setCursorBlinkMode(getBlinkMode(gsProfile.getString(SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY, SETTINGS_PROFILE_FONT_KEY], {
+            PgFontDescription desc;
+            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY)) {
+                desc = PgFontDescription.fromString(gsDesktop.getString(SETTINGS_MONOSPACE_FONT_KEY));
+            } else {
+                desc = PgFontDescription.fromString(gsProfile.getString(SETTINGS_PROFILE_FONT_KEY));
+            }
+            if (desc.getSize() == 0)
+                desc.setSize(10);
+            vte.setFont(desc);
+            renderer.updateBadgeFont();
+        });
+
+        prefRegistry.register([SETTINGS_AUTO_HIDE_MOUSE_KEY], {
+            vte.setMouseAutohide(gsSettings.getBoolean(SETTINGS_AUTO_HIDE_MOUSE_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY], {
+            if (vte !is null)
+                vte.setWordCharExceptions(gsProfile.getString(SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_TEXT_BLINK_MODE)) {
+                vte.setTextBlinkMode(getTextBlinkMode(gsProfile.getString(SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY)));
+            }
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_BOLD_IS_BRIGHT)) {
+                vte.setBoldIsBright(gsProfile.getBoolean(SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY));
+            }
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
+                vte.setCellHeightScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY));
+            }
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
+                vte.setCellWidthScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY));
+            }
+        });
+
+        // --- Terminal UI preferences ---
+        prefRegistry.register([SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY], {
             if (useOverlayScrollbar) {
                 if (gsProfile.getBoolean(SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY)) {
                     sw.setPolicy(PolicyType.NEVER, PolicyType.AUTOMATIC);
@@ -2117,53 +2219,9 @@ private:
                 sb.setNoShowAll(!gsProfile.getBoolean(SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY));
                 sb.setVisible(gsProfile.getBoolean(SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY));
             }
-            break;
-        case SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY:
-            scrollOnOutput = gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY);
-            vte.setScrollOnOutput(scrollOnOutput);
-            break;
-        case SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY:
-            vte.setScrollOnKeystroke(gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY));
-            break;
-        case SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY, SETTINGS_PROFILE_SCROLLBACK_LINES_KEY:
-            auto scrollLines = gsProfile.getBoolean(SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY) ? -1 : gsProfile.getInt(SETTINGS_PROFILE_SCROLLBACK_LINES_KEY);
-            vte.setScrollbackLines(scrollLines);
-            break;
-        case SETTINGS_PROFILE_BACKSPACE_BINDING_KEY:
-            vte.setBackspaceBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_BACKSPACE_BINDING_KEY)));
-            break;
-        case SETTINGS_PROFILE_DELETE_BINDING_KEY:
-            vte.setDeleteBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_DELETE_BINDING_KEY)));
-            break;
-        case SETTINGS_PROFILE_ENCODING_KEY:
-            vte.setEncoding(gsProfile.getString(SETTINGS_PROFILE_ENCODING_KEY));
-            break;
-        case SETTINGS_PROFILE_CJK_WIDTH_KEY:
-            vte.setCjkAmbiguousWidth(to!int(countUntil(SETTINGS_PROFILE_CJK_WIDTH_VALUES, gsProfile.getString(SETTINGS_PROFILE_CJK_WIDTH_KEY))) + 1);
-            break;
-        case SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY:
-            vte.setCursorBlinkMode(getBlinkMode(gsProfile.getString(SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY)));
-            break;
-        case SETTINGS_PROFILE_TITLE_KEY:
-            updateDisplayText();
-            break;
-        case SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY, SETTINGS_PROFILE_FONT_KEY:
-            PgFontDescription desc;
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY)) {
-                desc = PgFontDescription.fromString(gsDesktop.getString(SETTINGS_MONOSPACE_FONT_KEY));
-            } else {
-                desc = PgFontDescription.fromString(gsProfile.getString(SETTINGS_PROFILE_FONT_KEY));
-            }
-            if (desc.getSize() == 0)
-                desc.setSize(10);
-            // If we are drawing badges and using system font, invalidate badge font before setting new font
-            vte.setFont(desc);
-            renderer.updateBadgeFont();
-            break;
-        case SETTINGS_AUTO_HIDE_MOUSE_KEY:
-            vte.setMouseAutohide(gsSettings.getBoolean(SETTINGS_AUTO_HIDE_MOUSE_KEY));
-            break;
-        case SETTINGS_TERMINAL_TITLE_STYLE_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_TERMINAL_TITLE_STYLE_KEY], {
             string value = gsSettings.getString(SETTINGS_TERMINAL_TITLE_STYLE_KEY);
             if (value == SETTINGS_TERMINAL_TITLE_STYLE_VALUE_SMALL) {
                 bTitle.getStyleContext().addClass("compact");
@@ -2171,35 +2229,16 @@ private:
                 bTitle.getStyleContext().removeClass("compact");
             }
             updateTitleBar();
-            break;
-        case SETTINGS_TERMINAL_TITLE_SHOW_WHEN_SINGLE_KEY:
-            updateTitleBar();
-            break;
-        case SETTINGS_ALL_CUSTOM_HYPERLINK_KEY:
-            loadRegex();
-            break;
-        case SETTINGS_ALL_TRIGGERS_KEY:
-            loadTriggers();
-            break;
-        case SETTINGS_TRIGGERS_LINES_KEY:
-            maxLines = gsSettings.getInt(SETTINGS_TRIGGERS_LINES_KEY);
-            break;
-        case SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY:
-            unlimitedLines = gsSettings.getBoolean(SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY);
-            break;
-        case SETTINGS_PROFILE_BADGE_TEXT_KEY:
-            if (isVTEBackgroundDrawEnabled()) {
-                updateBadge();
-            }
-            break;
-        case SETTINGS_PROFILE_BADGE_COLOR_KEY, SETTINGS_PROFILE_USE_BADGE_COLOR_KEY:
-            renderer.applyBadgeColor();
-            queueDraw();
-            break;
-        case SETTINGS_PROFILE_BADGE_POSITION_KEY:
-            queueDraw();
-            break;
-        case SETTINGS_CONTROL_SCROLL_ZOOM_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_TERMINAL_TITLE_SHOW_WHEN_SINGLE_KEY], { updateTitleBar(); });
+        prefRegistry.register([SETTINGS_PROFILE_TITLE_KEY], { updateDisplayText(); });
+
+        prefRegistry.register([SETTINGS_PROFILE_BADGE_TEXT_KEY], {
+            if (isVTEBackgroundDrawEnabled()) { updateBadge(); }
+        });
+
+        prefRegistry.register([SETTINGS_CONTROL_SCROLL_ZOOM_KEY], {
             if (gsSettings.getBoolean(SETTINGS_CONTROL_SCROLL_ZOOM_KEY)) {
                 if (vte !is null && scrollEventHandlerId == 0) {
                     scrollEventHandlerId = vte.addOnScroll(&onTerminalScroll);
@@ -2210,90 +2249,17 @@ private:
                     scrollEventHandlerId = 0;
                 }
             }
-            break;
-        case SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY], {
             silenceThreshold = gsProfile.getInt(SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY);
-            break;
-        case SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY:
-            if (vte !is null)
-                vte.setWordCharExceptions(gsProfile.getString(SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY));
-            break;
-        case SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_TEXT_BLINK_MODE)) {
-                vte.setTextBlinkMode(getTextBlinkMode(gsProfile.getString(SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY)));
-            }
-            break;
-        case SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_BOLD_IS_BRIGHT)) {
-                vte.setBoldIsBright(gsProfile.getBoolean(SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY));
-            }
-            break;
-        case SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
-                vte.setCellHeightScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY));
-            }
-            break;
-        case SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
-                vte.setCellWidthScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY));
-            }
-            break;
-        case SETTINGS_PROFILE_MARGIN_KEY:
-            if (vte !is null && isVTEBackgroundDrawEnabled()) {
-                renderer.setMargin(gsProfile.getInt(SETTINGS_PROFILE_MARGIN_KEY));
-                vte.queueDraw();
-            }
-            break;
-        case SETTINGS_PROFILE_BADGE_USE_SYSTEM_FONT_KEY, SETTINGS_PROFILE_BADGE_FONT_KEY:
-            renderer.updateBadgeFont();
-            break;
-        default:
-            break;
-        }
-    }
+        });
 
-    /* applySecondaryColorPreferences moved to renderer.applySecondaryColors() */
-
-    /**
-     * Applies all preferences, used when terminal widget is first started to configure it
-     */
-    void applyPreferences() {
-        string[] keys = [
-            SETTINGS_PROFILE_TERMINAL_BELL_KEY, SETTINGS_PROFILE_ALLOW_BOLD_KEY,
-            SETTINGS_PROFILE_REWRAP_KEY,
-            SETTINGS_PROFILE_CURSOR_SHAPE_KEY, // Only pass one color key, all colors will be applied
-            SETTINGS_PROFILE_FG_COLOR_KEY, SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY, SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY,
-            SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY,
-            SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY,
-            SETTINGS_PROFILE_BACKSPACE_BINDING_KEY,
-            SETTINGS_PROFILE_DELETE_BINDING_KEY,
-            SETTINGS_PROFILE_CJK_WIDTH_KEY, SETTINGS_PROFILE_ENCODING_KEY, SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY, //Only pass the one font key, will handle both cases
-            SETTINGS_PROFILE_FONT_KEY,
-            SETTINGS_TERMINAL_TITLE_STYLE_KEY, SETTINGS_AUTO_HIDE_MOUSE_KEY,
-            SETTINGS_PROFILE_USE_CURSOR_COLOR_KEY,
-            SETTINGS_PROFILE_USE_HIGHLIGHT_COLOR_KEY,
-            SETTINGS_ALL_CUSTOM_HYPERLINK_KEY,
-            SETTINGS_ALL_TRIGGERS_KEY,
-            SETTINGS_TRIGGERS_LINES_KEY,
-            SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY,
-            SETTINGS_PROFILE_BADGE_TEXT_KEY,
-            SETTINGS_PROFILE_BADGE_COLOR_KEY,
-            SETTINGS_PROFILE_BADGE_POSITION_KEY,
-            SETTINGS_CONTROL_SCROLL_ZOOM_KEY,
-            SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY,
-            SETTINGS_PROFILE_BOLD_COLOR_KEY,
-            SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY,
-            SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY,
-            SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY,
-            SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY,
-            SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY,
-            SETTINGS_PROFILE_MARGIN_KEY,
-            SETTINGS_PROFILE_BADGE_USE_SYSTEM_FONT_KEY
-        ];
-
-        foreach (key; keys) {
-            applyPreference(key);
-        }
+        // --- Trigger preferences ---
+        prefRegistry.register([SETTINGS_ALL_CUSTOM_HYPERLINK_KEY], { loadRegex(); });
+        prefRegistry.register([SETTINGS_ALL_TRIGGERS_KEY], { loadTriggers(); });
+        prefRegistry.register([SETTINGS_TRIGGERS_LINES_KEY], { maxLines = gsSettings.getInt(SETTINGS_TRIGGERS_LINES_KEY); });
+        prefRegistry.register([SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY], { unlimitedLines = gsSettings.getBoolean(SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY); });
     }
 
     VteTextBlinkMode getTextBlinkMode(string mode) {
@@ -3145,6 +3111,7 @@ public:
         renderer = new TerminalRenderer(this, &isTerminalWidgetFocused);
         clipboardHandler = new ClipboardHandler(this, this, &scrollToBottom, &focusTerminal);
         processQuery = new TerminalProcessQuery(this);
+        registerPreferenceHandlers();
         trace("Profile Event Handler");
         gsProfileChangedHandlerId = gsProfile.addOnChanged(delegate(string key, Settings) {
             applyPreference(key);

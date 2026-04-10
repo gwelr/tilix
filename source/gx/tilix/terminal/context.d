@@ -66,3 +66,58 @@ interface ISyncInputEmitter {
     /// Broadcast a sync input event to all other synchronized terminals.
     void emitSyncInput(SyncInputEvent event);
 }
+
+/**
+ * Handler that applies a preference when its GSettings key changes.
+ *
+ * Handlers are closures that capture everything they need (the settings
+ * object, the target VTE/renderer/widget). They take no parameters
+ * because each handler knows its own key.
+ */
+alias PreferenceHandler = void delegate();
+
+/**
+ * A registry mapping GSettings keys to their handlers.
+ *
+ * Components register their preference handlers at construction time.
+ * Terminal dispatches GSettings change notifications through this registry
+ * and uses it to apply all preferences at startup.
+ *
+ * Multiple keys can map to the same handler (e.g., 6 color keys all
+ * trigger the same color application). A single key can only have one
+ * handler — the last registration wins.
+ */
+struct PreferenceRegistry {
+
+private:
+    PreferenceHandler[string] _handlers;
+
+public:
+    /// Register a handler for one or more GSettings keys.
+    void register(string[] keys, PreferenceHandler handler) {
+        foreach (key; keys) {
+            _handlers[key] = handler;
+        }
+    }
+
+    /// Dispatch a preference change. Returns true if a handler was found.
+    bool apply(string key) {
+        if (auto handler = key in _handlers) {
+            (*handler)();
+            return true;
+        }
+        return false;
+    }
+
+    /// Apply all registered preferences (used at startup).
+    void applyAll() {
+        foreach (key, handler; _handlers) {
+            handler();
+        }
+    }
+
+    /// Returns all registered keys (useful for debugging/introspection).
+    @property auto keys() {
+        return _handlers.byKey();
+    }
+}
