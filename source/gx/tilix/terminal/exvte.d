@@ -262,3 +262,55 @@ shared static this() {
 		Linker.link(vte_terminal_get_color_background_for_draw, "vte_terminal_get_color_background_for_draw", LIBRARY_VTE);
 	}
 }
+
+// ---------------------------------------------------------------------------
+// VTE enum conversion helpers
+// ---------------------------------------------------------------------------
+
+package:
+
+import gx.tilix.preferences;
+
+/// Convert a text blink mode settings string to VTE enum.
+VteTextBlinkMode getTextBlinkMode(string mode) {
+    import std.algorithm : countUntil;
+    long i = countUntil(SETTINGS_PROFILE_TEXT_BLINK_MODE_VALUES, mode);
+    return cast(VteTextBlinkMode) i;
+}
+
+/// Convert a cursor blink mode settings string to VTE enum.
+VteCursorBlinkMode getBlinkMode(string mode) {
+    import std.algorithm : countUntil;
+    long i = countUntil(SETTINGS_PROFILE_CURSOR_BLINK_MODE_VALUES, mode);
+    return cast(VteCursorBlinkMode) i;
+}
+
+/// Convert an erase binding settings string to VTE enum.
+VteEraseBinding getEraseBinding(string binding) {
+    import std.algorithm : countUntil;
+    long i = countUntil(SETTINGS_PROFILE_ERASE_BINDING_VALUES, binding);
+    return cast(VteEraseBinding) i;
+}
+
+/// Convert a cursor shape settings string to VTE enum.
+VteCursorShape getCursorShape(string shape) {
+    final switch (shape) {
+    case SETTINGS_PROFILE_CURSOR_SHAPE_BLOCK_VALUE:
+        return VteCursorShape.BLOCK;
+    case SETTINGS_PROFILE_CURSOR_SHAPE_IBEAM_VALUE:
+        return VteCursorShape.IBEAM;
+    case SETTINGS_PROFILE_CURSOR_SHAPE_UNDERLINE_VALUE:
+        return VteCursorShape.UNDERLINE;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for VTE enum converters
+// ---------------------------------------------------------------------------
+
+/// Test: getCursorShape converts all shape values.
+unittest {
+    assert(getCursorShape(SETTINGS_PROFILE_CURSOR_SHAPE_BLOCK_VALUE) == VteCursorShape.BLOCK);
+    assert(getCursorShape(SETTINGS_PROFILE_CURSOR_SHAPE_IBEAM_VALUE) == VteCursorShape.IBEAM);
+    assert(getCursorShape(SETTINGS_PROFILE_CURSOR_SHAPE_UNDERLINE_VALUE) == VteCursorShape.UNDERLINE);
+}

@@ -2262,31 +2262,8 @@ private:
         prefRegistry.register([SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY], { unlimitedLines = gsSettings.getBoolean(SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY); });
     }
 
-    VteTextBlinkMode getTextBlinkMode(string mode) {
-        long i = countUntil(SETTINGS_PROFILE_TEXT_BLINK_MODE_VALUES, mode);
-        return cast(VteTextBlinkMode) i;
-    }
-
-    VteCursorBlinkMode getBlinkMode(string mode) {
-        long i = countUntil(SETTINGS_PROFILE_CURSOR_BLINK_MODE_VALUES, mode);
-        return cast(VteCursorBlinkMode) i;
-    }
-
-    VteEraseBinding getEraseBinding(string binding) {
-        long i = countUntil(SETTINGS_PROFILE_ERASE_BINDING_VALUES, binding);
-        return cast(VteEraseBinding) i;
-    }
-
-    VteCursorShape getCursorShape(string shape) {
-        final switch (shape) {
-        case SETTINGS_PROFILE_CURSOR_SHAPE_BLOCK_VALUE:
-            return VteCursorShape.BLOCK;
-        case SETTINGS_PROFILE_CURSOR_SHAPE_IBEAM_VALUE:
-            return VteCursorShape.IBEAM;
-        case SETTINGS_PROFILE_CURSOR_SHAPE_UNDERLINE_VALUE:
-            return VteCursorShape.UNDERLINE;
-        }
-    }
+    /* VTE enum converters (getTextBlinkMode, getBlinkMode, getEraseBinding,
+     * getCursorShape) moved to gx.tilix.terminal.exvte */
 
     void loadTriggers() {
         TerminalTrigger[] tmpTriggers;
