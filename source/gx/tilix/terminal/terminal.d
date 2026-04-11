@@ -3105,13 +3105,13 @@ public:
                 applyPreference(SETTINGS_PROFILE_FONT_KEY);
             }
         });
-        createUI();
-        trace("Apply preferences");
-        applyPreferences();
         renderer = new TerminalRenderer(this, &isTerminalWidgetFocused);
         clipboardHandler = new ClipboardHandler(this, this, &scrollToBottom, &focusTerminal);
         processQuery = new TerminalProcessQuery(this);
         registerPreferenceHandlers();
+        createUI();
+        trace("Apply preferences");
+        applyPreferences();
         trace("Profile Event Handler");
         gsProfileChangedHandlerId = gsProfile.addOnChanged(delegate(string key, Settings) {
             applyPreference(key);
