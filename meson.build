@@ -74,6 +74,7 @@ tilix_sources = [
     'source/gx/tilix/terminal/spawn.d',
     'source/gx/tilix/terminal/state.d',
     'source/gx/tilix/terminal/terminal.d',
+    'source/gx/tilix/terminal/test_integration.d',
     'source/gx/tilix/terminal/types.d',
     'source/gx/tilix/terminal/util.d',
     'source/gx/tilix/application.d',

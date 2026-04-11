@@ -16,4 +16,4 @@ build_dir="cibuild"
 #
 
 cd $build_dir
-meson test --print-errorlogs
+xvfb-run meson test --print-errorlogs
