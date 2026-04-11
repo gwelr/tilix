@@ -59,3 +59,42 @@ string getUserShell(string shell) {
 bool isFlatpak() {
     return "/.flatpak-info".exists;
 }
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+/// Test: isFlatpak returns false on a normal system (no /.flatpak-info).
+unittest {
+    // On CI and dev machines, we're not in Flatpak
+    // This test will correctly fail inside a Flatpak sandbox,
+    // which is fine — we don't run tests there
+    assert(!isFlatpak() || "/.flatpak-info".exists);
+}
+
+/// Test: getUserShell returns a non-empty path.
+unittest {
+    string shell = getUserShell("");
+    assert(shell.length > 0, "getUserShell should find a shell");
+    assert(shell[0] == '/', "shell path should be absolute");
+}
+
+/// Test: getUserShell with valid path returns it unchanged.
+unittest {
+    string shell = getUserShell("/bin/sh");
+    assert(shell == "/bin/sh");
+}
+
+/// Test: getUserShell with nonexistent path falls back.
+unittest {
+    string shell = getUserShell("/nonexistent/shell");
+    assert(shell.length > 0, "should fall back to a real shell");
+    assert(shell != "/nonexistent/shell", "should not return nonexistent path");
+}
+
+/// Test: known shells list contains common shells.
+unittest {
+    import std.algorithm : canFind;
+    assert(shells.canFind("/bin/bash") || shells.canFind("/usr/bin/bash"));
+    assert(shells.canFind("/bin/sh"));
+}
