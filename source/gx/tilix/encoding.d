@@ -89,3 +89,45 @@ static this() {
         lookupEncoding[encoding[0]] = encoding[1];
     }
 }
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+/// Test: encoding table is populated after module init.
+unittest {
+    assert(lookupEncoding.length > 0, "encoding table should be populated");
+    assert(lookupEncoding.length == encodings.length, "lookup should have same count as array");
+}
+
+/// Test: UTF-8 encoding exists and is categorized as Unicode.
+unittest {
+    assert("UTF-8" in lookupEncoding);
+    assert(lookupEncoding["UTF-8"] == "Unicode");
+}
+
+/// Test: common encodings are present.
+unittest {
+    assert("ISO-8859-1" in lookupEncoding);
+    assert("WINDOWS-1252" in lookupEncoding);
+    assert("EUC-JP" in lookupEncoding);
+    assert("GB18030" in lookupEncoding);
+    assert("KOI8-R" in lookupEncoding);
+}
+
+/// Test: all encoding keys are non-empty.
+unittest {
+    foreach (enc; encodings) {
+        assert(enc[0].length > 0, "encoding name should not be empty");
+        assert(enc[1].length > 0, "encoding category should not be empty");
+    }
+}
+
+/// Test: no duplicate encoding keys.
+unittest {
+    bool[string] seen;
+    foreach (enc; encodings) {
+        assert(enc[0] !in seen, "duplicate encoding: " ~ enc[0]);
+        seen[enc[0]] = true;
+    }
+}

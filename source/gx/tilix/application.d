@@ -785,6 +785,8 @@ public:
     }
 
     void presentPreferences() {
+        import core.memory : GC;
+
         tracef("*** Application ID %s",getApplicationId());
 
         //Check if preference window already exists
@@ -798,6 +800,14 @@ public:
         }
         //Otherwise create it and save the ID
         trace("Creating preference window");
+        // Disable GC during dialog construction to prevent the D garbage
+        // collector from finalizing temporary GtkD wrapper objects while
+        // GTK is still building the widget tree and CSS style cache.
+        // On GLib 2.84+ (e.g. Flatpak GNOME 48 runtime), premature
+        // finalization corrupts CSS node style cache ref counts, causing
+        // a crash in gtk_css_node_style_cache_unref.
+        GC.disable();
+        scope(exit) GC.enable();
         preferenceDialog = new PreferenceDialog(getActiveAppWindow());
         preferenceDialog.addOnDestroy(delegate(Widget) {
             trace("Remove preference window reference");

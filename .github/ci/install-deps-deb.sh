@@ -33,4 +33,5 @@ eatmydata apt-get install -yq \
         libgtksourceview-3.0-dev \
         libpeas-dev \
         libvte-2.91-dev \
-        po4a
+        po4a \
+        xvfb

@@ -142,48 +142,22 @@ import gx.tilix.encoding;
 import gx.tilix.preferences;
 import gx.tilix.terminal.actions;
 import gx.tilix.terminal.advpaste;
+import gx.tilix.terminal.clipboard;
+import gx.tilix.terminal.context;
+import gx.tilix.terminal.process;
+import gx.tilix.terminal.renderer;
+import gx.tilix.terminal.spawn;
 import gx.tilix.terminal.exvte;
+import gx.tilix.terminal.flatpak;
 import gx.tilix.terminal.layout;
 import gx.tilix.terminal.password;
 import gx.tilix.terminal.regex;
 import gx.tilix.terminal.search;
+import gx.tilix.terminal.state;
+import gx.tilix.terminal.types;
 import gx.tilix.terminal.util;
 import gx.tilix.terminal.monitor;
 import gx.tilix.terminal.activeprocess;
-
-/**
-* When dragging over VTE, specifies which quandrant new terminal
-* should snap to
-*/
-enum DragQuadrant {
-    LEFT,
-    TOP,
-    RIGHT,
-    BOTTOM
-}
-
-/**
- * The window state of the terminal
- */
-enum TerminalWindowState {
-    NORMAL,
-    MAXIMIZED
-}
-
-enum SyncInputEventType {
-    INSERT_TERMINAL_NUMBER,
-    INSERT_TEXT,
-    KEY_PRESS,
-    RESET,
-    RESET_AND_CLEAR
-};
-
-struct SyncInputEvent {
-    string senderUUID;
-    SyncInputEventType eventType;
-    Event event;
-    string text;
-}
 
 /**
  * This class is a composite widget that consists of the VTE Terminal
@@ -196,7 +170,7 @@ struct SyncInputEvent {
  * various event handlers defined in this Terminal widget. Note these event handlers
  * do not correspond to GTK signals, they are pure D code.
  */
-class Terminal : EventBox, ITerminal {
+class Terminal : EventBox, ITerminal, ITerminalContext, ISyncInputEmitter {
 
 private:
 
@@ -207,6 +181,10 @@ private:
     mixin ProcessNotificationHandler;
 
     TerminalWindowState terminalWindowState = TerminalWindowState.NORMAL;
+    ClipboardHandler clipboardHandler;
+    TerminalProcessQuery processQuery;
+    TerminalRenderer renderer;
+    PreferenceRegistry prefRegistry;
     Button btnMaximize;
 
     SearchRevealer rFind;
@@ -285,7 +263,7 @@ private:
 
     //Whether to ignore unsafe paste, basically when
     //option is turned on but user opts to ignore it for this terminal
-    bool unsafePasteIgnored;
+    /* unsafePasteIgnored moved to ClipboardHandler */
 
     GlobalTerminalState gst;
 
@@ -534,7 +512,7 @@ private:
         //Clipboard actions
         saCopy = registerActionWithSettings(group, ACTION_PREFIX, ACTION_COPY, gsShortcuts, delegate(GVariant, SimpleAction) {
             if (vte.getHasSelection()) {
-                copyToClipboard();
+                clipboardHandler.copyToClipboard();
             }
         });
         if (checkVTEVersion(VTE_VERSION_COPY_AS_HTML)) {
@@ -556,9 +534,9 @@ private:
                 }
             }
             if (gsSettings.getBoolean(SETTINGS_PASTE_ADVANCED_DEFAULT_KEY)) {
-                advancedPaste(GDK_SELECTION_CLIPBOARD);
+                clipboardHandler.advancedPaste(GDK_SELECTION_CLIPBOARD);
             } else {
-                paste(GDK_SELECTION_CLIPBOARD);
+                clipboardHandler.paste(GDK_SELECTION_CLIPBOARD);
             }
         });
 
@@ -573,15 +551,15 @@ private:
                 }
             }
             if (gsSettings.getBoolean(SETTINGS_PASTE_ADVANCED_DEFAULT_KEY)) {
-                advancedPaste(GDK_SELECTION_PRIMARY);
+                clipboardHandler.advancedPaste(GDK_SELECTION_PRIMARY);
             } else {
-                paste(GDK_SELECTION_PRIMARY);
+                clipboardHandler.paste(GDK_SELECTION_PRIMARY);
             }
         });
 
         saAdvancedPaste = registerActionWithSettings(group, ACTION_PREFIX, ACTION_ADVANCED_PASTE, gsShortcuts, delegate(GVariant, SimpleAction) {
             if (Clipboard.get(null).waitIsTextAvailable()) {
-                advancedPaste(GDK_SELECTION_CLIPBOARD);
+                clipboardHandler.advancedPaste(GDK_SELECTION_CLIPBOARD);
             }
         });
 
@@ -656,7 +634,7 @@ private:
         //Close Terminal Action
         registerActionWithSettings(group, ACTION_PREFIX, ACTION_CLOSE, gsShortcuts, delegate(GVariant, SimpleAction) {
             string name;
-            if (isProcessRunning(name)) {
+            if (processQuery.isProcessRunning(gpid, name)) {
                 ProcessInformation pi = ProcessInformation(ProcessInfoSource.TERMINAL, (name.length > 0? name: getDisplayText("")), uuid, []);
                 if (!promptCanCloseProcesses(gsSettings, cast(Window)getToplevel(), pi)) return;
             }
@@ -813,7 +791,7 @@ private:
 
         // Toggle margin
         registerActionWithSettings(group, ACTION_PREFIX, ACTION_TOGGLE_MARGIN, gsShortcuts, delegate(GVariant value, SimpleAction sa) {
-            marginEnabled = !marginEnabled;
+            renderer.toggleMargin();
             vte.queueDraw();
         }, null, null);
 
@@ -832,10 +810,10 @@ private:
         Popover pm = new Popover(parent);
         // Force VTE to redraw on showing/hiding of popover if dimUnfocused is active
         pm.addOnMap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pm.addOnUnmap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pm.bindModel(model, null);
         return pm;
@@ -1001,7 +979,7 @@ private:
                     // If we are have notifications enabled, only show notification if process is
                     // running, otherwise let normal process finished do it's magic
                     bool commandNotification = checkVTEFeature(TerminalFeature.EVENT_NOTIFICATION) && gsSettings.getBoolean(SETTINGS_NOTIFY_ON_PROCESS_COMPLETE_KEY);
-                    if (!commandNotification || (commandNotification && isProcessRunning())) {
+                    if (!commandNotification || (commandNotification && processQuery.isProcessRunning(gpid))) {
                         glong cursorCol, cursorRow;
                         vte.getCursorPosition(cursorCol, cursorRow);
                         if (cursorRow > 0) cursorRow--;
@@ -1088,7 +1066,7 @@ private:
             if (vte is null) return;
 
             if (vte.getHasSelection() && gsSettings.getBoolean(SETTINGS_COPY_ON_SELECT_KEY)) {
-                copyToClipboard();
+                clipboardHandler.copyToClipboard();
             }
         });
 
@@ -1118,10 +1096,10 @@ private:
         pmContext.setPosition(PositionType.BOTTOM);
         // Force VTE to redraw on showing/hiding of popover if dimUnfocused is active
         pmContext.addOnMap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pmContext.addOnUnmap(delegate(Widget) {
-           if (dimPercent > 0) vte.queueDraw();
+           if (renderer.dimPercent > 0) vte.queueDraw();
         });
         pmContext.addOnClosed(delegate(Popover) {
             // See #305 for more info on why this is here
@@ -1213,9 +1191,7 @@ private:
         return box;
     }
 
-    bool isSynchronizedInput() {
-        return _synchronizeInput && _synchronizeInputOverride;
-    }
+    /* isSynchronizedInput moved to ISyncInputEmitter implementation */
 
     void showBell() {
         string value = gsProfile.getString(SETTINGS_PROFILE_TERMINAL_BELL_KEY);
@@ -1284,6 +1260,7 @@ private:
         badge = getDisplayText(badge);
         if (badge != _cachedBadge) {
             _cachedBadge = badge;
+            renderer.setBadgeText(badge);
             vte.queueDraw();
         }
     }
@@ -1447,108 +1424,8 @@ private:
         }
     }
 
-    /**
-     * Tests if the paste is unsafe, currently just looks for sudo and
-     * carriage return.
-     */
-    bool isPasteUnsafe(string text) {
-        return (text.indexOf("sudo") > -1) && (text.indexOf("\n") > -1);
-    }
-
-    void advancedPaste(GdkAtom source) {
-        string pasteText = Clipboard.get(source).waitForText();
-        if (pasteText.length == 0) return;
-        if (pasteText.indexOf("\n") < 0) return paste(source);
-
-        AdvancedPasteDialog dialog = new AdvancedPasteDialog(cast(Window) getToplevel(), pasteText, isPasteUnsafe(pasteText));
-        scope(exit) {
-            dialog.hide();
-            dialog.destroy();
-        }
-        dialog.showAll();
-        if (dialog.run() == ResponseType.APPLY) {
-            pasteText = dialog.text;
-            vtePasteText(vte, pasteText[0 .. $]);
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY)) {
-                scrollToBottom();
-            }
-            static if (!USE_COMMIT_SYNCHRONIZATION) {
-                if (isSynchronizedInput()) {
-                    SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.INSERT_TEXT, null, pasteText);
-                    onSyncInput.emit(this, se);
-                }
-            }
-        }
-        focusTerminal();
-    }
-
-    void copyToClipboard() {
-        import gtk.Clipboard : Clipboard;
-
-        vte.copyClipboard();
-        if (gsSettings.getBoolean(SETTINGS_COPY_STRIP_TRAILING_WHITESPACE)) {
-            Clipboard cb = Clipboard.get(GDK_SELECTION_CLIPBOARD);
-            string text = cb.waitForText();
-            if (text !is null && text.length > 0) {
-                import std.array : join;
-                string[] lines;
-                foreach (line; text.splitLines()) {
-                    lines ~= line.stripRight();
-                }
-                string stripped = lines.join("\n");
-                if (stripped.length > 0) {
-                    cb.setText(stripped, cast(int) stripped.length);
-                }
-            }
-        }
-    }
-
-    void paste(GdkAtom source) {
-
-        string pasteText = Clipboard.get(source).waitForText();
-
-        bool stripTrailingWhitespace = gsSettings.getBoolean(SETTINGS_STRIP_TRAILING_WHITESPACE);
-        if (stripTrailingWhitespace) {
-            pasteText = pasteText.stripRight();
-        }
-
-        if (pasteText.length == 0) return;
-
-        // Don't check for unsafe paste if doing sync input, original paste checked it
-        if (isPasteUnsafe(pasteText)) {
-            if (!unsafePasteIgnored && gsSettings.getBoolean(SETTINGS_UNSAFE_PASTE_ALERT_KEY)) {
-                UnsafePasteDialog dialog = new UnsafePasteDialog(cast(Window) getToplevel(), chomp(pasteText));
-                scope (exit) {
-                    dialog.destroy();
-                }
-                if (dialog.run() == 0)
-                    unsafePasteIgnored = true;
-                else
-                    return;
-            }
-        }
-
-        if (gsSettings.getBoolean(SETTINGS_STRIP_FIRST_COMMENT_CHAR_ON_PASTE_KEY) && pasteText.length > 0 && (pasteText[0] == '#' || pasteText[0] == '$')) {
-            pasteText = pasteText[1 .. $];
-            vtePasteText(vte, pasteText);
-        } else if (stripTrailingWhitespace) {
-            vtePasteText(vte, pasteText);
-        } else if (source == GDK_SELECTION_CLIPBOARD) {
-            vte.pasteClipboard();
-        } else {
-            vte.pastePrimary();
-        }
-
-        if (gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY)) {
-            scrollToBottom();
-        }
-        static if (!USE_COMMIT_SYNCHRONIZATION) {
-            if (isSynchronizedInput()) {
-                SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.INSERT_TEXT, null, pasteText);
-                onSyncInput.emit(this, se);
-            }
-        }
-    }
+    /* Clipboard operations (paste, advancedPaste, copyToClipboard, isPasteUnsafe)
+     * moved to gx.tilix.terminal.clipboard.ClipboardHandler */
 
     void notifyTerminalRequestMove(string srcUUID, Terminal dest, DragQuadrant dq) {
         onRequestMove.emit(srcUUID, dest, dq);
@@ -2011,9 +1888,9 @@ private:
             case MouseButton.MIDDLE:
                 widget.grabFocus();
                 if (gsSettings.getBoolean(SETTINGS_PASTE_ADVANCED_DEFAULT_KEY)) {
-                    advancedPaste(GDK_SELECTION_PRIMARY);
+                    clipboardHandler.advancedPaste(GDK_SELECTION_PRIMARY);
                 } else {
-                    paste(GDK_SELECTION_PRIMARY);
+                    clipboardHandler.paste(GDK_SELECTION_PRIMARY);
                 }
                 return true;
             default:
@@ -2144,7 +2021,7 @@ private:
         //Fire focus events so session can track which terminal last had focus
         onFocusIn.emit(this);
         // Set colors for dimPercent
-        setVTEColors();
+        renderer.setVTEColors();
     }
 
     /**
@@ -2162,31 +2039,13 @@ private:
             bTitle.unsetStateFlags(StateFlags.ACTIVE);
         }
         // Set colors for dimPercent
-        setVTEColors();
+        renderer.setVTEColors();
     }
 
     // Preferences go here
 private:
 
-    enum VTEColorSet {normal, dim}
-
-    RGBA vteFG;
-    RGBA dimFG;
-    RGBA vteBG;
-    RGBA vteBGClear;
-    RGBA vteHighlightFG;
-    RGBA vteHighlightBG;
-    RGBA vteCursorFG;
-    RGBA vteCursorBG;
-    RGBA vteDimBG;
-    RGBA[16] vtePalette;
-    RGBA[16] dimPalette;
-    RGBA vteBadge;
-    RGBA vteBold;
-    RGBA dimBold;
-    double dimPercent;
-
-    VTEColorSet currentColorSet = VTEColorSet.normal;
+    /* Color state and methods moved to gx.tilix.terminal.renderer.TerminalRenderer */
 
     /**
      * CSSProvider to enhance terminal scrollbar
@@ -2198,119 +2057,33 @@ private:
      */
     gulong scrollEventHandlerId;
 
-    void initColors() {
-        vteFG = new RGBA();
-        dimFG = new RGBA();
-        vteBG = new RGBA();
-        vteHighlightFG = new RGBA();
-        vteHighlightBG = new RGBA();
-        vteCursorFG = new RGBA();
-        vteCursorBG = new RGBA();
-        vteDimBG = new RGBA();
-        vteBadge = new RGBA();
-        vteBold = new RGBA();
-        dimBold = new RGBA();
-
-        vtePalette = new RGBA[16];
-        dimPalette = new RGBA[16];
-        for (int i = 0; i < 16; i++) {
-            vtePalette[i] = new RGBA();
-            dimPalette[i] = new RGBA();
-        }
+    /// Dispatch a preference change through the registry.
+    void applyPreference(string key) {
+        if (vte is null) return;
+        prefRegistry.apply(key);
     }
 
-    void dimColor(RGBA original, RGBA dim, double cf) {
-        double r, g, b;
-        adjustColor(cf, original, r, g, b);
-        dim.red = r;
-        dim.green = g;
-        dim.blue = b;
-        dim.alpha = original.alpha;
-    }
-
-    void updateDimColors() {
-        double cf = (vteBG.red + vteBG.green + vteBG.blue > 1.5)?dimPercent:-dimPercent;
-        dimColor(vteFG, dimFG, cf);
-        dimColor(vteBold, dimBold, cf);
-        foreach(i, color; vtePalette) {
-            dimColor(color, dimPalette[i], cf);
-        }
-    }
-
-    void setBoldColor(RGBA color) {
-        if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_BOLD_COLOR_KEY)) {
-            vte.setColorBold(color);
-        } else {
-            vte.setColorBold(null);
-        }
-    }
-
-    void setVTEColors(bool force = false) {
-        // Determine colorset needed and only set if different
-        VTEColorSet desired = (isTerminalWidgetFocused() || dimPercent == 0)? VTEColorSet.normal: VTEColorSet.dim;
-        if (desired == currentColorSet && !force) return;
-
-//        tracef("vteBGUsed: %f, %f, %f, %f", vteBG.red, vteBG.green, vteBG.blue, vteBG.alpha);
-        if (isTerminalWidgetFocused() || dimPercent == 0) {
-//            tracef("vteFG: %f, %f, %f", vteFG.red, vteFG.green, vteFG.blue);
-            vte.setColors(vteFG, vteBG, vtePalette);
-            setBoldColor(vteBold);
-            currentColorSet = VTEColorSet.normal;
-        } else {
-//            tracef("dimFG: %f, %f, %f", dimFG.red, dimFG.green, dimFG.blue);
-            vte.setColors(dimFG, vteBG, dimPalette);
-            setBoldColor(dimBold);
-            currentColorSet = VTEColorSet.dim;
-        }
-        applySecondaryColorPreferences();
+    /// Apply all registered preferences (used at startup).
+    void applyPreferences() {
+        prefRegistry.applyAll();
     }
 
     /**
-     * Updates a setting based on the passed key. Note that using gio.Settings.bind
-     * would have been very viable here to handle configuration changes but the VTE widget
-     * has so few binable properties it's just easier to handle everything consistently.
+     * Register all preference handlers. Each component registers the keys
+     * it cares about. Terminal registers handlers for VTE-direct settings
+     * and UI concerns. Components register their own handlers.
      */
-    void applyPreference(string key) {
-        if (vte is null) return;
+    void registerPreferenceHandlers() {
+        // --- Renderer-owned preferences (colors, badge, margin) ---
+        renderer.registerPreferences(prefRegistry);
 
-        switch (key) {
-        case SETTINGS_PROFILE_TERMINAL_BELL_KEY:
-            string value = gsProfile.getString(SETTINGS_PROFILE_TERMINAL_BELL_KEY);
-            vte.setAudibleBell(value == SETTINGS_PROFILE_TERMINAL_BELL_SOUND_VALUE || value == SETTINGS_PROFILE_TERMINAL_BELL_ICON_SOUND_VALUE);
-            break;
-        case SETTINGS_PROFILE_ALLOW_BOLD_KEY:
-            vte.setAllowBold(gsProfile.getBoolean(SETTINGS_PROFILE_ALLOW_BOLD_KEY));
-            break;
-        case SETTINGS_PROFILE_REWRAP_KEY:
-            vte.setRewrapOnResize(gsProfile.getBoolean(SETTINGS_PROFILE_REWRAP_KEY));
-            break;
-        case SETTINGS_PROFILE_CURSOR_SHAPE_KEY:
-            vte.setCursorShape(getCursorShape(gsProfile.getString(SETTINGS_PROFILE_CURSOR_SHAPE_KEY)));
-            break;
-        case SETTINGS_PROFILE_FG_COLOR_KEY, SETTINGS_PROFILE_BG_COLOR_KEY, SETTINGS_PROFILE_PALETTE_COLOR_KEY, SETTINGS_PROFILE_USE_THEME_COLORS_KEY,
-        SETTINGS_PROFILE_BG_TRANSPARENCY_KEY, SETTINGS_PROFILE_DIM_TRANSPARENCY_KEY:
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_THEME_COLORS_KEY)) {
-                getStyleColor(vte.getStyleContext(), StateFlags.ACTIVE, vteFG);
-                getStyleBackgroundColor(vte.getStyleContext(), StateFlags.ACTIVE, vteBG);
-            } else {
-            if (!vteFG.parse(gsProfile.getString(SETTINGS_PROFILE_FG_COLOR_KEY)))
-                trace("Parsing foreground color failed");
-            if (!vteBG.parse(gsProfile.getString(SETTINGS_PROFILE_BG_COLOR_KEY)))
-                trace("Parsing background color failed");
-            }
-            vteBG.alpha = to!double(100 - gsProfile.getInt(SETTINGS_PROFILE_BG_TRANSPARENCY_KEY)) / 100.0;
-            string[] colors = gsProfile.getStrv(SETTINGS_PROFILE_PALETTE_COLOR_KEY);
-            foreach (i, color; colors) {
-                if (!vtePalette[i].parse(color)) {
-                    trace("Parsing color failed " ~ colors[i]);
-                }
-            }
-            dimPercent = to!double(gsProfile.getInt(SETTINGS_PROFILE_DIM_TRANSPARENCY_KEY)) / 100.0;
-            updateDimColors();
-            setVTEColors(true);
-
-            // Enhance scrollbar for supported themes, requires a theme specific css file in
-            // tilix resources
+        // Colors: also update scrollbar CSS after renderer applies colors
+        prefRegistry.register([
+            SETTINGS_PROFILE_FG_COLOR_KEY, SETTINGS_PROFILE_BG_COLOR_KEY,
+            SETTINGS_PROFILE_PALETTE_COLOR_KEY, SETTINGS_PROFILE_USE_THEME_COLORS_KEY,
+            SETTINGS_PROFILE_BG_TRANSPARENCY_KEY, SETTINGS_PROFILE_DIM_TRANSPARENCY_KEY
+        ], {
+            renderer.applyMainColors();
             if (!useOverlayScrollbar) {
                 if (sbProvider !is null) {
                     sb.getStyleContext().removeProvider(sbProvider);
@@ -2318,45 +2091,124 @@ private:
                 }
                 string theme = getGtkTheme();
                 string[string] variables;
-                variables["$TERMINAL_BG"] = rgbaTo8bitHex(vteBG,false,true);
-                variables["$TERMINAL_OPACITY"] = to!string(vteBG.alpha);
+                variables["$TERMINAL_BG"] = rgbaTo8bitHex(renderer.vteBG, false, true);
+                variables["$TERMINAL_OPACITY"] = to!string(renderer.vteBG.alpha);
                 sbProvider = createCssProvider(APPLICATION_RESOURCE_ROOT ~ "/css/tilix." ~ theme ~ ".scrollbar.css", variables);
                 if (sbProvider !is null) {
                     sb.getStyleContext().addProvider(sbProvider, ProviderPriority.APPLICATION);
                 }
             }
-            break;
-        case SETTINGS_PROFILE_BOLD_COLOR_KEY, SETTINGS_PROFILE_USE_BOLD_COLOR_KEY:
-            string boldColor = gsProfile.getString(SETTINGS_PROFILE_BOLD_COLOR_KEY);
-            if (!vteBold.parse(boldColor)) {
-                error("Parsing Bold color failed");
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_BADGE_POSITION_KEY], { queueDraw(); });
+
+        prefRegistry.register([SETTINGS_PROFILE_MARGIN_KEY], {
+            if (vte !is null && isVTEBackgroundDrawEnabled()) {
+                renderer.setMargin(gsProfile.getInt(SETTINGS_PROFILE_MARGIN_KEY));
+                vte.queueDraw();
             }
-            updateDimColors();
-            setVTEColors(true);
-            break;
-        case SETTINGS_PROFILE_USE_HIGHLIGHT_COLOR_KEY, SETTINGS_PROFILE_HIGHLIGHT_FG_COLOR_KEY, SETTINGS_PROFILE_HIGHLIGHT_BG_COLOR_KEY:
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_HIGHLIGHT_COLOR_KEY)) {
-                vteHighlightFG.parse(gsProfile.getString(SETTINGS_PROFILE_HIGHLIGHT_FG_COLOR_KEY));
-                vteHighlightBG.parse(gsProfile.getString(SETTINGS_PROFILE_HIGHLIGHT_BG_COLOR_KEY));
-                vte.setColorHighlightForeground(vteHighlightFG);
-                vte.setColorHighlight(vteHighlightBG);
+        });
+
+        // --- VTE-direct preferences (gid migration will touch these) ---
+        prefRegistry.register([SETTINGS_PROFILE_TERMINAL_BELL_KEY], {
+            string value = gsProfile.getString(SETTINGS_PROFILE_TERMINAL_BELL_KEY);
+            vte.setAudibleBell(value == SETTINGS_PROFILE_TERMINAL_BELL_SOUND_VALUE || value == SETTINGS_PROFILE_TERMINAL_BELL_ICON_SOUND_VALUE);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_ALLOW_BOLD_KEY], {
+            vte.setAllowBold(gsProfile.getBoolean(SETTINGS_PROFILE_ALLOW_BOLD_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_REWRAP_KEY], {
+            vte.setRewrapOnResize(gsProfile.getBoolean(SETTINGS_PROFILE_REWRAP_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CURSOR_SHAPE_KEY], {
+            vte.setCursorShape(getCursorShape(gsProfile.getString(SETTINGS_PROFILE_CURSOR_SHAPE_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY], {
+            scrollOnOutput = gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY);
+            vte.setScrollOnOutput(scrollOnOutput);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY], {
+            vte.setScrollOnKeystroke(gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY, SETTINGS_PROFILE_SCROLLBACK_LINES_KEY], {
+            auto scrollLines = gsProfile.getBoolean(SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY) ? -1 : gsProfile.getInt(SETTINGS_PROFILE_SCROLLBACK_LINES_KEY);
+            vte.setScrollbackLines(scrollLines);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_BACKSPACE_BINDING_KEY], {
+            vte.setBackspaceBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_BACKSPACE_BINDING_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_DELETE_BINDING_KEY], {
+            vte.setDeleteBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_DELETE_BINDING_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_ENCODING_KEY], {
+            vte.setEncoding(gsProfile.getString(SETTINGS_PROFILE_ENCODING_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CJK_WIDTH_KEY], {
+            vte.setCjkAmbiguousWidth(to!int(countUntil(SETTINGS_PROFILE_CJK_WIDTH_VALUES, gsProfile.getString(SETTINGS_PROFILE_CJK_WIDTH_KEY))) + 1);
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY], {
+            vte.setCursorBlinkMode(getBlinkMode(gsProfile.getString(SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY)));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY, SETTINGS_PROFILE_FONT_KEY], {
+            PgFontDescription desc;
+            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY)) {
+                desc = PgFontDescription.fromString(gsDesktop.getString(SETTINGS_MONOSPACE_FONT_KEY));
             } else {
-                vte.setColorHighlightForeground(null);
-                vte.setColorHighlight(null);
+                desc = PgFontDescription.fromString(gsProfile.getString(SETTINGS_PROFILE_FONT_KEY));
             }
-            break;
-        case SETTINGS_PROFILE_USE_CURSOR_COLOR_KEY, SETTINGS_PROFILE_CURSOR_FG_COLOR_KEY, SETTINGS_PROFILE_CURSOR_BG_COLOR_KEY:
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_CURSOR_COLOR_KEY)) {
-                vteCursorFG.parse(gsProfile.getString(SETTINGS_PROFILE_CURSOR_FG_COLOR_KEY));
-                vteCursorBG.parse(gsProfile.getString(SETTINGS_PROFILE_CURSOR_BG_COLOR_KEY));
-                vte.setColorCursorForeground(vteCursorFG);
-                vte.setColorCursor(vteCursorBG);
-            } else {
-                vte.setColorCursorForeground(null);
-                vte.setColorCursor(null);
+            if (desc.getSize() == 0)
+                desc.setSize(10);
+            vte.setFont(desc);
+            renderer.updateBadgeFont();
+        });
+
+        prefRegistry.register([SETTINGS_AUTO_HIDE_MOUSE_KEY], {
+            vte.setMouseAutohide(gsSettings.getBoolean(SETTINGS_AUTO_HIDE_MOUSE_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY], {
+            if (vte !is null)
+                vte.setWordCharExceptions(gsProfile.getString(SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY));
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_TEXT_BLINK_MODE)) {
+                vte.setTextBlinkMode(getTextBlinkMode(gsProfile.getString(SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY)));
             }
-            break;
-        case SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_BOLD_IS_BRIGHT)) {
+                vte.setBoldIsBright(gsProfile.getBoolean(SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY));
+            }
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
+                vte.setCellHeightScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY));
+            }
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY], {
+            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
+                vte.setCellWidthScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY));
+            }
+        });
+
+        // --- Terminal UI preferences ---
+        prefRegistry.register([SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY], {
             if (useOverlayScrollbar) {
                 if (gsProfile.getBoolean(SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY)) {
                     sw.setPolicy(PolicyType.NEVER, PolicyType.AUTOMATIC);
@@ -2367,53 +2219,9 @@ private:
                 sb.setNoShowAll(!gsProfile.getBoolean(SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY));
                 sb.setVisible(gsProfile.getBoolean(SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY));
             }
-            break;
-        case SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY:
-            scrollOnOutput = gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY);
-            vte.setScrollOnOutput(scrollOnOutput);
-            break;
-        case SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY:
-            vte.setScrollOnKeystroke(gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY));
-            break;
-        case SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY, SETTINGS_PROFILE_SCROLLBACK_LINES_KEY:
-            auto scrollLines = gsProfile.getBoolean(SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY) ? -1 : gsProfile.getInt(SETTINGS_PROFILE_SCROLLBACK_LINES_KEY);
-            vte.setScrollbackLines(scrollLines);
-            break;
-        case SETTINGS_PROFILE_BACKSPACE_BINDING_KEY:
-            vte.setBackspaceBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_BACKSPACE_BINDING_KEY)));
-            break;
-        case SETTINGS_PROFILE_DELETE_BINDING_KEY:
-            vte.setDeleteBinding(getEraseBinding(gsProfile.getString(SETTINGS_PROFILE_DELETE_BINDING_KEY)));
-            break;
-        case SETTINGS_PROFILE_ENCODING_KEY:
-            vte.setEncoding(gsProfile.getString(SETTINGS_PROFILE_ENCODING_KEY));
-            break;
-        case SETTINGS_PROFILE_CJK_WIDTH_KEY:
-            vte.setCjkAmbiguousWidth(to!int(countUntil(SETTINGS_PROFILE_CJK_WIDTH_VALUES, gsProfile.getString(SETTINGS_PROFILE_CJK_WIDTH_KEY))) + 1);
-            break;
-        case SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY:
-            vte.setCursorBlinkMode(getBlinkMode(gsProfile.getString(SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY)));
-            break;
-        case SETTINGS_PROFILE_TITLE_KEY:
-            updateDisplayText();
-            break;
-        case SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY, SETTINGS_PROFILE_FONT_KEY:
-            PgFontDescription desc;
-            if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_SYSTEM_FONT_KEY)) {
-                desc = PgFontDescription.fromString(gsDesktop.getString(SETTINGS_MONOSPACE_FONT_KEY));
-            } else {
-                desc = PgFontDescription.fromString(gsProfile.getString(SETTINGS_PROFILE_FONT_KEY));
-            }
-            if (desc.getSize() == 0)
-                desc.setSize(10);
-            // If we are drawing badges and using system font, invalidate badge font before setting new font
-            vte.setFont(desc);
-            updateBadgeFont();
-            break;
-        case SETTINGS_AUTO_HIDE_MOUSE_KEY:
-            vte.setMouseAutohide(gsSettings.getBoolean(SETTINGS_AUTO_HIDE_MOUSE_KEY));
-            break;
-        case SETTINGS_TERMINAL_TITLE_STYLE_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_TERMINAL_TITLE_STYLE_KEY], {
             string value = gsSettings.getString(SETTINGS_TERMINAL_TITLE_STYLE_KEY);
             if (value == SETTINGS_TERMINAL_TITLE_STYLE_VALUE_SMALL) {
                 bTitle.getStyleContext().addClass("compact");
@@ -2421,43 +2229,16 @@ private:
                 bTitle.getStyleContext().removeClass("compact");
             }
             updateTitleBar();
-            break;
-        case SETTINGS_TERMINAL_TITLE_SHOW_WHEN_SINGLE_KEY:
-            updateTitleBar();
-            break;
-        case SETTINGS_ALL_CUSTOM_HYPERLINK_KEY:
-            loadRegex();
-            break;
-        case SETTINGS_ALL_TRIGGERS_KEY:
-            loadTriggers();
-            break;
-        case SETTINGS_TRIGGERS_LINES_KEY:
-            maxLines = gsSettings.getInt(SETTINGS_TRIGGERS_LINES_KEY);
-            break;
-        case SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY:
-            unlimitedLines = gsSettings.getBoolean(SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY);
-            break;
-        case SETTINGS_PROFILE_BADGE_TEXT_KEY:
-            if (isVTEBackgroundDrawEnabled()) {
-                updateBadge();
-            }
-            break;
-        case SETTINGS_PROFILE_BADGE_COLOR_KEY, SETTINGS_PROFILE_USE_BADGE_COLOR_KEY:
-            if (isVTEBackgroundDrawEnabled()) {
-                string badgeColor;
-                if (gsProfile.getBoolean(SETTINGS_PROFILE_USE_BADGE_COLOR_KEY)) {
-                    badgeColor = gsProfile.getString(SETTINGS_PROFILE_BADGE_COLOR_KEY);
-                } else {
-                    badgeColor = gsProfile.getString(SETTINGS_PROFILE_FG_COLOR_KEY);
-                }
-                if (!vteBadge.parse(badgeColor)) tracef("Failed to parse badge color %s", badgeColor);
-                queueDraw();
-            }
-            break;
-        case SETTINGS_PROFILE_BADGE_POSITION_KEY:
-            queueDraw();
-            break;
-        case SETTINGS_CONTROL_SCROLL_ZOOM_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_TERMINAL_TITLE_SHOW_WHEN_SINGLE_KEY], { updateTitleBar(); });
+        prefRegistry.register([SETTINGS_PROFILE_TITLE_KEY], { updateDisplayText(); });
+
+        prefRegistry.register([SETTINGS_PROFILE_BADGE_TEXT_KEY], {
+            if (isVTEBackgroundDrawEnabled()) { updateBadge(); }
+        });
+
+        prefRegistry.register([SETTINGS_CONTROL_SCROLL_ZOOM_KEY], {
             if (gsSettings.getBoolean(SETTINGS_CONTROL_SCROLL_ZOOM_KEY)) {
                 if (vte !is null && scrollEventHandlerId == 0) {
                     scrollEventHandlerId = vte.addOnScroll(&onTerminalScroll);
@@ -2468,124 +2249,21 @@ private:
                     scrollEventHandlerId = 0;
                 }
             }
-            break;
-        case SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY:
+        });
+
+        prefRegistry.register([SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY], {
             silenceThreshold = gsProfile.getInt(SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY);
-            break;
-        case SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY:
-            if (vte !is null)
-                vte.setWordCharExceptions(gsProfile.getString(SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY));
-            break;
-        case SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_TEXT_BLINK_MODE)) {
-                vte.setTextBlinkMode(getTextBlinkMode(gsProfile.getString(SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY)));
-            }
-            break;
-        case SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_BOLD_IS_BRIGHT)) {
-                vte.setBoldIsBright(gsProfile.getBoolean(SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY));
-            }
-            break;
-        case SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
-                vte.setCellHeightScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY));
-            }
-            break;
-        case SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY:
-            if (vte !is null && checkVTEVersion(VTE_VERSION_CELL_SCALE)) {
-                vte.setCellWidthScale(gsProfile.getDouble(SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY));
-            }
-            break;
-        case SETTINGS_PROFILE_MARGIN_KEY:
-            if (vte !is null && isVTEBackgroundDrawEnabled()) {
-                margin = gsProfile.getInt(SETTINGS_PROFILE_MARGIN_KEY);
-                vte.queueDraw();
-            }
-            break;
-        case SETTINGS_PROFILE_BADGE_USE_SYSTEM_FONT_KEY, SETTINGS_PROFILE_BADGE_FONT_KEY:
-            updateBadgeFont();
-            break;
-        default:
-            break;
-        }
+        });
+
+        // --- Trigger preferences ---
+        prefRegistry.register([SETTINGS_ALL_CUSTOM_HYPERLINK_KEY], { loadRegex(); });
+        prefRegistry.register([SETTINGS_ALL_TRIGGERS_KEY], { loadTriggers(); });
+        prefRegistry.register([SETTINGS_TRIGGERS_LINES_KEY], { maxLines = gsSettings.getInt(SETTINGS_TRIGGERS_LINES_KEY); });
+        prefRegistry.register([SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY], { unlimitedLines = gsSettings.getBoolean(SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY); });
     }
 
-    /**
-     * Fix for #855 where these secondary colors get reset after changing fg, bg or palette
-     * Also see: https://bugzilla.gnome.org/show_bug.cgi?id=781369
-     */
-    void applySecondaryColorPreferences() {
-        applyPreference(SETTINGS_PROFILE_CURSOR_FG_COLOR_KEY);
-        applyPreference(SETTINGS_PROFILE_HIGHLIGHT_FG_COLOR_KEY);
-    }
-
-    /**
-     * Applies all preferences, used when terminal widget is first started to configure it
-     */
-    void applyPreferences() {
-        string[] keys = [
-            SETTINGS_PROFILE_TERMINAL_BELL_KEY, SETTINGS_PROFILE_ALLOW_BOLD_KEY,
-            SETTINGS_PROFILE_REWRAP_KEY,
-            SETTINGS_PROFILE_CURSOR_SHAPE_KEY, // Only pass one color key, all colors will be applied
-            SETTINGS_PROFILE_FG_COLOR_KEY, SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY, SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY,
-            SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY,
-            SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY,
-            SETTINGS_PROFILE_BACKSPACE_BINDING_KEY,
-            SETTINGS_PROFILE_DELETE_BINDING_KEY,
-            SETTINGS_PROFILE_CJK_WIDTH_KEY, SETTINGS_PROFILE_ENCODING_KEY, SETTINGS_PROFILE_CURSOR_BLINK_MODE_KEY, //Only pass the one font key, will handle both cases
-            SETTINGS_PROFILE_FONT_KEY,
-            SETTINGS_TERMINAL_TITLE_STYLE_KEY, SETTINGS_AUTO_HIDE_MOUSE_KEY,
-            SETTINGS_PROFILE_USE_CURSOR_COLOR_KEY,
-            SETTINGS_PROFILE_USE_HIGHLIGHT_COLOR_KEY,
-            SETTINGS_ALL_CUSTOM_HYPERLINK_KEY,
-            SETTINGS_ALL_TRIGGERS_KEY,
-            SETTINGS_TRIGGERS_LINES_KEY,
-            SETTINGS_TRIGGERS_UNLIMITED_LINES_KEY,
-            SETTINGS_PROFILE_BADGE_TEXT_KEY,
-            SETTINGS_PROFILE_BADGE_COLOR_KEY,
-            SETTINGS_PROFILE_BADGE_POSITION_KEY,
-            SETTINGS_CONTROL_SCROLL_ZOOM_KEY,
-            SETTINGS_PROFILE_NOTIFY_SILENCE_THRESHOLD_KEY,
-            SETTINGS_PROFILE_BOLD_COLOR_KEY,
-            SETTINGS_PROFILE_WORD_WISE_SELECT_CHARS_KEY,
-            SETTINGS_PROFILE_TEXT_BLINK_MODE_KEY,
-            SETTINGS_PROFILE_BOLD_IS_BRIGHT_KEY,
-            SETTINGS_PROFILE_CELL_HEIGHT_SCALE_KEY,
-            SETTINGS_PROFILE_CELL_WIDTH_SCALE_KEY,
-            SETTINGS_PROFILE_MARGIN_KEY,
-            SETTINGS_PROFILE_BADGE_USE_SYSTEM_FONT_KEY
-        ];
-
-        foreach (key; keys) {
-            applyPreference(key);
-        }
-    }
-
-    VteTextBlinkMode getTextBlinkMode(string mode) {
-        long i = countUntil(SETTINGS_PROFILE_TEXT_BLINK_MODE_VALUES, mode);
-        return cast(VteTextBlinkMode) i;
-    }
-
-    VteCursorBlinkMode getBlinkMode(string mode) {
-        long i = countUntil(SETTINGS_PROFILE_CURSOR_BLINK_MODE_VALUES, mode);
-        return cast(VteCursorBlinkMode) i;
-    }
-
-    VteEraseBinding getEraseBinding(string binding) {
-        long i = countUntil(SETTINGS_PROFILE_ERASE_BINDING_VALUES, binding);
-        return cast(VteEraseBinding) i;
-    }
-
-    VteCursorShape getCursorShape(string shape) {
-        final switch (shape) {
-        case SETTINGS_PROFILE_CURSOR_SHAPE_BLOCK_VALUE:
-            return VteCursorShape.BLOCK;
-        case SETTINGS_PROFILE_CURSOR_SHAPE_IBEAM_VALUE:
-            return VteCursorShape.IBEAM;
-        case SETTINGS_PROFILE_CURSOR_SHAPE_UNDERLINE_VALUE:
-            return VteCursorShape.UNDERLINE;
-        }
-    }
+    /* VTE enum converters (getTextBlinkMode, getBlinkMode, getEraseBinding,
+     * getCursorShape) moved to gx.tilix.terminal.exvte */
 
     void loadTriggers() {
         TerminalTrigger[] tmpTriggers;
@@ -2788,7 +2466,7 @@ private:
             if (workingDir.length > 0) {
                 envv ~= ["PWD=" ~ workingDir];
             }
-            setProxyEnv(envv);
+            setProxyEnv(gsSettings, tilix.getProxySettings(), envv);
 
             /*
             // To make this work the terminal has to be added to the widget
@@ -2837,31 +2515,7 @@ private:
 
     enum O_CLOEXEC = 0x80000;
 
-    /**
-     * In a Flatpak environment, vte.getUserShell() will return the shell *inside* the Flatpak,
-     * which isn't the user's shell. Instead, getent must be used to get the proper shell.
-     */
-    string getHostShell() {
-        import core.sys.posix.unistd: getuid;
-
-        string uid = to!string(getuid());
-        tracef("Asking toolbox for shell", uid);
-
-        string passwd = captureHostToolboxCommand("get-passwd", to!string(uid), []);
-
-        if (passwd == null) {
-            warning("Failed to get host passwd entry");
-            return null;
-        }
-
-        string shell = passwd.split(":")[6];
-        if (shell.length == 0) {
-            warning("Host shell is empty from passwd: %s", passwd);
-            return null;
-        }
-
-        return shell.length > 0 ? shell : null;
-    }
+    /* getHostShell moved to gx.tilix.terminal.spawn */
 
     /**
      * Needed spawnSync function to handle flatpak where we need to generate out VtePty in order
@@ -2945,255 +2599,9 @@ private:
         }
     }
 
-    GVariant buildHostCommandVariant(string workingDir, string[] args, string[] envv, uint[] handles) {
-        if (workingDir.length == 0) workingDir = Util.getHomeDir();
+    /* Flatpak host command functions moved to gx.tilix.terminal.flatpak */
 
-        GVariantBuilder fdBuilder = new GVariantBuilder(new GVariantType("a{uh}"));
-        foreach(i, fd; handles) {
-            fdBuilder.addValue(new GVariant(new GVariant(i), new GVariant(g_variant_new_handle(fd), true)));
-        }
-        GVariantBuilder envBuilder = new GVariantBuilder(new GVariantType("a{ss}"));
-        foreach(env; envv) {
-            string[] envPair = env.split("=");
-            tracef("Adding env var %s=%s", envPair[0], envPair[1]);
-            if (envPair.length ==2) {
-                GVariant pair = new GVariant(new GVariant(envPair[0]), new GVariant(envPair[1]));
-                envBuilder.addValue(pair);
-            }
-        }
-
-        import gtkc.glib: g_variant_new;
-
-        immutable(char)* wd = toStringz(workingDir);
-        immutable(char)*[] argsv;
-        foreach(i, arg; args) {
-            argsv ~= toStringz(arg);
-        }
-        argsv ~= null;
-
-
-        gtkc.glibtypes.GVariant* vs = g_variant_new("(^ay^aay@a{uh}@a{ss}u)",
-                          wd,
-                          argsv.ptr,
-                          fdBuilder.end().getVariantStruct(true),
-                          envBuilder.end().getVariantStruct(true),
-                          cast(uint) 1);
-
-        return new GVariant(vs, true);
-    }
-
-    alias HostCommandExitedCallback = void delegate(int);
-
-    struct HostCommandExitedArgs {
-      HostCommandExitedCallback callback;
-      int pid = -1;
-      uint signalId = 0u;
-      int status = -1;
-    };
-
-    extern(C) static void hostCommandExitedCallback(GDBusConnection *connection, const(char)* senderName, const(char)* objectPath, const(char)* interfaceName,
-                                                    const(char)* signalName, gtkc.glibtypes.GVariant* parameters, HostCommandExitedArgs *args) {
-        uint pid, status;
-        g_variant_get(parameters, "(uu)", &pid, &status);
-
-        if (args.pid == -1 || pid == args.pid) {
-            import gtkc.gio: g_dbus_connection_signal_unsubscribe;
-
-            if (args.pid == -1) {
-                trace("hostCommandExitedCallback was called before spawn completed.");
-                args.pid = pid;
-                args.status = status;
-            } else {
-                g_dbus_connection_signal_unsubscribe(connection, args.signalId);
-                args.callback(status);
-            }
-
-            GC.removeRoot(cast(void*)args);
-            warning("**********COLLECT**********");
-            GC.collect();
-        }
-    }
-
-    bool sendHostCommand(string workingDir, string[] args, string[] envv, int[] stdio_fds, out int gpid, HostCommandExitedCallback exitedCallback) {
-        import gio.DBusConnection;
-        import gio.UnixFDList;
-
-        uint[] handles;
-
-        UnixFDList outFdList;
-        UnixFDList inFdList = new UnixFDList();
-        foreach(i, fd; stdio_fds) {
-            handles ~= inFdList.append(fd);
-            if (handles[i] == -1) {
-                warning("Error creating fd list handles");
-            }
-        }
-
-        DBusConnection connection = new DBusConnection(
-            environment.get("DBUS_SESSION_BUS_ADDRESS"),
-            GDBusConnectionFlags.AUTHENTICATION_CLIENT | GDBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-            null,
-            null
-        );
-        connection.setExitOnClose(false);
-        connection.doref();
-
-        auto callbackArgs = new HostCommandExitedArgs();
-        callbackArgs.callback = exitedCallback;
-        GC.addRoot(cast(void*)callbackArgs);
-
-        uint signalId = connection.signalSubscribe(
-            "org.freedesktop.Flatpak",
-            "org.freedesktop.Flatpak.Development",
-            "HostCommandExited",
-            "/org/freedesktop/Flatpak/Development",
-            null,
-            DBusSignalFlags.NONE,
-            cast(GDBusSignalCallback)&hostCommandExitedCallback,
-            cast(void*)callbackArgs,
-            null,
-        );
-
-        GVariant reply = connection.callWithUnixFdListSync(
-            "org.freedesktop.Flatpak",
-            "/org/freedesktop/Flatpak/Development",
-            "org.freedesktop.Flatpak.Development",
-            "HostCommand",
-            buildHostCommandVariant(workingDir, args, envv, handles),
-            new GVariantType("(u)"),
-            GDBusCallFlags.NONE,
-            -1,
-            inFdList,
-            outFdList,
-            null
-        );
-
-        if (reply is null) {
-            warning("No reply from flatpak dbus service");
-            connection.signalUnsubscribe(signalId);
-            return false;
-        } else {
-            uint pid;
-            g_variant_get(reply.getVariantStruct(), "(u)", &pid);
-            gpid = pid;
-
-            if (callbackArgs.pid != -1) {
-                trace("HostCommandExited was already emitted");
-                connection.signalUnsubscribe(signalId);
-                exitedCallback(callbackArgs.status);
-            } else {
-                callbackArgs.pid = pid;
-                callbackArgs.signalId = signalId;
-            }
-
-            return true;
-        }
-    }
-
-    /*
-     * A thin wrapper over sendHostCommand that asks the tilix-flatpak-toolbox for information
-     * about the host system.
-     */
-    string captureHostToolboxCommand(string command, string arg, int[] extra_fds) {
-        import std.process: Pipe, pipe;
-        import glib.MainContext;
-        import glib.KeyFile;
-
-        KeyFile kf = new KeyFile();
-        kf.loadFromFile("/.flatpak-info", GKeyFileFlags.NONE);
-
-        string hostRoot = kf.getString("Instance", "app-path");
-        string[] args = [format("%s/bin/tilix-flatpak-toolbox", hostRoot), command, arg];
-
-        Pipe output = pipe();
-        scope(exit) pipe.close();
-
-        int gpid, status = -1;
-
-        void commandExited(int command_status) {
-            status = command_status;
-        }
-
-        int[] stdio_fds = [0, output.writeEnd.fileno, 2] ~ extra_fds;
-
-        if (!sendHostCommand("/", args, [], stdio_fds, gpid, &commandExited)) {
-            return null;
-        }
-
-        MainContext ctx = MainContext.getThreadDefault();
-        if (ctx is null) {
-            // https://github.com/gtkd-developers/GtkD/issues/247
-            ctx = MainContext.default_();
-        }
-
-        trace("captureHostToolboxCommand is waiting for status to be filled...");
-        while (status == -1) {
-            ctx.iteration(true);
-        }
-
-        if (status != 0) {
-            return null;
-        }
-
-        return output.readEnd.readln().strip();
-    }
-
-    /**
-     * Sets the proxy environment variables in the shell if available in gnome-terminal.
-     * Note this only works with manual proxy settings.
-     */
-    void setProxyEnv(ref string[] envv) {
-
-        void addProxy(GSettings gsProxy, string scheme, string urlScheme, string varName) {
-            GSettings gsProxyScheme = gsProxy.getChild(scheme);
-
-            string host = gsProxyScheme.getString("host");
-            int port = gsProxyScheme.getInt("port");
-            if (host.length == 0 || port == 0) return;
-
-            // Strip protocol prefix if already present in the host value
-            foreach (prefix; ["http://", "https://", "socks://", "ftp://"]) {
-                if (host.startsWith(prefix)) {
-                    host = host[prefix.length .. $];
-                    break;
-                }
-            }
-
-            string value = urlScheme ~ "://";
-            if (scheme == "http") {
-                if (gsProxyScheme.getBoolean("use-authentication")) {
-                    string user = gsProxyScheme.getString("authentication-user");
-                    string pw = gsProxyScheme.getString("authentication-password");
-                    if (user.length > 0) {
-                        value = value ~ "@" ~ user;
-                        if (pw.length > 0) {
-                            value = value ~ ":" ~ pw;
-                        }
-                        value = value ~ "@";
-                    }
-                }
-            }
-
-            value = value ~ format("%s:%d/", host, port);
-            envv ~= format("%s=%s",varName,value);
-        }
-
-
-        if (!gsSettings.getBoolean(SETTINGS_SET_PROXY_ENV_KEY)) return;
-
-        GSettings gsProxy = tilix.getProxySettings();
-        if (gsProxy is null) return;
-        if (gsProxy.getString("mode") != "manual") return;
-        addProxy(gsProxy, "http", "http", "http_proxy");
-        addProxy(gsProxy, "https", "http", "https_proxy");
-        addProxy(gsProxy, "ftp", "http", "ftp_proxy");
-        addProxy(gsProxy, "socks", "socks", "all_proxy");
-
-        string[] ignore = gsProxy.getStrv("ignore-hosts");
-        if (ignore.length > 0) {
-            envv ~= "no_proxy=" ~ join(ignore, ",");
-        }
-    }
+    /* setProxyEnv moved to gx.tilix.terminal.spawn */
 
     // Code to move terminals through Drag And Drop (DND) is in this private block
     // Keep all DND code here and do not intermix with other blocks
@@ -3202,7 +2610,13 @@ private:
     // with terminal DND
 private:
 
-    DragInfo dragInfo = DragInfo(false, DragQuadrant.LEFT);
+    DragInfo _dragInfo = DragInfo(false, DragQuadrant.LEFT);
+
+    /// Update dragInfo and sync to renderer for draw callback.
+    void setDragInfo(DragInfo info) {
+        _dragInfo = info;
+        if (renderer !is null) renderer.setDragInfo(info);
+    }
     bool isRootWindow = false;
     static if (USE_PIXBUF_DND) {
         Pixbuf dragImage;
@@ -3246,9 +2660,9 @@ private:
         }
         //TODO - Figure out why this is causing issues, see #545
         if (isVTEBackgroundDrawEnabled()) {
-            vte.addOnDraw(&onVTEDrawBadge);
+            vte.addOnDraw(&renderer.onDrawBadge);
         }
-        vte.addOnDraw(&onVTEDraw, ConnectFlags.AFTER);
+        vte.addOnDraw(&renderer.onDrawDragHighlight, ConnectFlags.AFTER);
 
         trace("Drag and drop completed");
     }
@@ -3384,7 +2798,7 @@ private:
         }
         DragQuadrant dq = getDragQuadrant(x, y, vte);
 
-        dragInfo = DragInfo(true, dq);
+        setDragInfo(DragInfo(true, dq));
         vte.queueDraw();
         //Uncomment this if debugging motion otherwise generates annoying amount of trace noise
         tracef("Drag motion: %s %d, %d, %d", _terminalUUID, x, y, dq);
@@ -3394,7 +2808,7 @@ private:
 
     void onVTEDragLeave(DragContext, uint, Widget) {
         trace("Drag Leave " ~ _terminalUUID);
-        dragInfo = DragInfo(false, DragQuadrant.LEFT);
+        setDragInfo(DragInfo(false, DragQuadrant.LEFT));
         vte.queueDraw();
     }
 
@@ -3502,7 +2916,7 @@ private:
             DragQuadrant dq = getDragQuadrant(x, y, vte);
             tracef("Receiving Terminal %s, Dropped terminal %s, x=%d, y=%d, dq=%d", _terminalUUID, uuid, x, y, dq);
             notifyTerminalRequestMove(uuid, this, dq);
-            dragInfo = DragInfo(false, dq);
+            setDragInfo(DragInfo(false, dq));
             break;
         case DropTargets.SESSION:
             string uuid = to!string(data.getDataWithLength()[0 .. $ - 1]);
@@ -3511,198 +2925,7 @@ private:
         }
     }
 
-    static const uint BADGE_MARGIN = 10;
-
-    static double[] marginDash = [2.0, 4.0];
-
-    PgFontDescription badgeFont = null;
-
-    int margin = 0;
-    bool marginEnabled = false;
-
-    static if (COMPILE_VTE_BACKGROUND_COLOR) {
-        RGBA drawBG;
-    }
-
-    void updateBadgeFont() {
-        if (vte is null || !isVTEBackgroundDrawEnabled()) return;
-        if (gsProfile.getBoolean(SETTINGS_PROFILE_BADGE_USE_SYSTEM_FONT_KEY)) {
-            badgeFont = vte.getFont().copy();
-            badgeFont.setSize(badgeFont.getSize() * 2);
-        } else {
-            badgeFont = PgFontDescription.fromString(gsProfile.getString(SETTINGS_PROFILE_BADGE_FONT_KEY));
-        }
-        tracef("Badge font is %s:%d", badgeFont.getFamily(), badgeFont.getSize());
-        vte.queueDraw();
-    }
-
-    bool onVTEDrawBadge(Scoped!Context cr, Widget w) {
-        cr.save();
-        double width = to!double(w.getAllocatedWidth());
-        double height = to!double(w.getAllocatedHeight());
-
-        // Only draw background if vte background draw is disabled
-        if (isVTEBackgroundDrawEnabled()) {
-            static if (COMPILE_VTE_BACKGROUND_COLOR) {
-                if (checkVTEVersion(VTE_VERSION_BACKGROUND_GET_COLOR)) {
-                    if (drawBG is null) drawBG = new RGBA();
-                    vte.getColorBackgroundForDraw(drawBG);
-                } else {
-                    drawBG = vteBG;
-                }
-                //tracef("Draw background: %f, %f, %f, %f", vteBG.red, vteBG.green, vteBG.blue, vteBG.alpha);
-                cr.setSourceRgba(drawBG.red, drawBG.green, drawBG.blue, drawBG.alpha);
-            } else {
-                cr.setSourceRgba(vteBG.red, vteBG.green, vteBG.blue, vteBG.alpha);
-            }
-            cr.setOperator(cairo_operator_t.SOURCE);
-            cr.rectangle(0.0, 0.0, width, height);
-            cr.clip();
-            cr.paint();
-            cr.resetClip();
-        }
-        //Draw Margin line
-        if (margin > 0 && marginEnabled) {
-            double r, g, b;
-            contrast(0.40, vteFG, r, g, b);
-            cr.setSourceRgba(r, g, b, 1.0);
-            cr.setDash(marginDash, 0.0);
-            cr.moveTo(vte.getCharWidth() * margin, 0);
-            cr.lineTo(vte.getCharWidth() * margin, height);
-            cr.stroke();
-        }
-
-        //Draw badge if badge text is available
-        if (_cachedBadge.length > 0 && badgeFont !is null) {
-            // Paint badge
-            // Use same alpha as background color to match transparency slider
-            //cr.setSourceRgba(vteBadge.red, vteBadge.green, vteBadge.blue, vteBG.alpha);
-            cr.setSourceRgba(vteBadge.red, vteBadge.green, vteBadge.blue, 1.0);
-
-            // Create rect for default NW position
-            GdkRectangle rect = GdkRectangle(BADGE_MARGIN, BADGE_MARGIN, to!int(width/2) - BADGE_MARGIN, to!int(height/2) - BADGE_MARGIN);
-            string position = gsProfile.getString(SETTINGS_PROFILE_BADGE_POSITION_KEY);
-            //Adjust coords of rect for other positions
-            switch (position) {
-                case SETTINGS_QUADRANT_NE_VALUE:
-                    rect.x = to!int(width/2) + BADGE_MARGIN;
-                    break;
-                case SETTINGS_QUADRANT_SW_VALUE:
-                    rect.y = to!int(height/2) + BADGE_MARGIN;
-                    break;
-                case SETTINGS_QUADRANT_SE_VALUE:
-                    rect.x = to!int(width/2) + BADGE_MARGIN;
-                    rect.y = to!int(height/2) + BADGE_MARGIN;
-                    break;
-                default:
-            }
-
-            //PgLayout pgl = PgCairo.createLayout(cr);
-            PgLayout pgl = new PgLayout(vte.getPangoContext());
-            pgl.setFontDescription(badgeFont);
-            pgl.setText(_cachedBadge);
-            pgl.setWidth(rect.width * PANGO_SCALE);
-            pgl.setHeight(rect.height * PANGO_SCALE);
-
-            int pw, ph;
-            pgl.getPixelSize(pw, ph);
-
-            /**************************************************
-            /* Old code where we auto-sized the badge,
-            /* leave it here in case we want to bring it back
-
-            //Hack, deduct 0.2 from ratio to make sure text will fit when painted
-            /*
-            double fontRatio = min(to!double(rect.width)/to!double(pw) - 0.2, to!double(rect.height)/to!double(ph));
-            // If a bigger font fits, then increase it
-            if (fontRatio > 1 && defaultFont) {
-                int fontSize = to!int(floor(fontRatio * badgeFont.getSize()));
-                badgeFont.setSize(fontSize);
-                pgl.setFontDescription(badgeFont);
-                //tracef("Width %d, Pixel Width %d, Pixel Height %d, Original Font ratio %f, Font size %d", rect.width, pw, ph, fontRatio, fontSize);
-                pgl.getPixelSize(pw, ph);
-            } else {
-                pgl.setWrap(PangoWrapMode.WORD_CHAR);
-            }
-            */
-             /**************************************************/
-
-             pgl.setWrap(PangoWrapMode.WORD_CHAR);
-
-            switch (position) {
-                case SETTINGS_QUADRANT_NE_VALUE:
-                    pgl.setAlignment(PangoAlignment.RIGHT);
-                    break;
-                case SETTINGS_QUADRANT_SW_VALUE:
-                    rect.y = rect.y + rect.height - ph;
-                    break;
-                case SETTINGS_QUADRANT_SE_VALUE:
-                    rect.y = rect.y + rect.height - ph;
-                    pgl.setAlignment(PangoAlignment.RIGHT);
-                    break;
-                default:
-            }
-
-            cr.rectangle(rect.x, rect.y, rect.width, rect.height);
-            cr.clip();
-            cr.moveTo(rect.x, rect.y);
-
-            PgCairo.showLayout(cr, pgl);
-
-            cr.resetClip();
-        }
-        cr.restore();
-        return false;
-    }
-
-
-    enum STROKE_WIDTH = 4;
-
-    //Draw the drag hint if dragging is occurring
-    bool onVTEDraw(Scoped!Context cr, Widget widget) {
-        /*
-        if (dimPercent > 0) {
-            Window window = cast(Window) getToplevel();
-            bool windowActive = (window is null)?false:window.isActive();
-            if (!windowActive || (!vte.isFocus() && !rFind.isSearchEntryFocus() && !pmContext.isVisible() && !mbTitle.getPopover().isVisible())) {
-                cr.setSourceRgba(vteDimBG.red, vteDimBG.green, vteDimBG.blue, dimPercent);
-                cr.setOperator(cairo_operator_t.ATOP);
-                cr.paint();
-            }
-        }
-        */
-        //Dragging happening?
-        if (!dragInfo.isDragActive)
-            return false;
-
-        RGBA color;
-
-        if (!vte.getStyleContext().lookupColor("theme_selected_bg_color", color)) {
-            getStyleBackgroundColor(vte.getStyleContext(), StateFlags.SELECTED, color);
-        }
-        cr.setSourceRgba(color.red, color.green, color.blue, 1.0);
-        cr.setLineWidth(STROKE_WIDTH);
-        int w = widget.getAllocatedWidth();
-        int h = widget.getAllocatedHeight();
-        int offset = STROKE_WIDTH;
-        final switch (dragInfo.dq) {
-        case DragQuadrant.LEFT:
-            cr.rectangle(offset, offset, w / 2, h - (offset * 2));
-            break;
-        case DragQuadrant.TOP:
-            cr.rectangle(offset, offset, w - (offset * 2), h / 2);
-            break;
-        case DragQuadrant.BOTTOM:
-            cr.rectangle(offset, h / 2, w - (offset * 2), h / 2 - offset);
-            break;
-        case DragQuadrant.RIGHT:
-            cr.rectangle(w / 2, offset, w / 2, h - (offset * 2));
-            break;
-        }
-        cr.strokePreserve();
-        //cr.fill();
-        return false;
-    }
+    /* Badge, margin, color, and draw methods moved to gx.tilix.terminal.renderer.TerminalRenderer */
 
     //Save terminal output functionality
 private:
@@ -3828,7 +3051,6 @@ public:
             finalizeTerminal();
         });
         gst = new GlobalTerminalState();
-        initColors();
         if (requestedUUID == null) {
             _terminalUUID = randomUUID().toString();
         } else {
@@ -3860,6 +3082,10 @@ public:
                 applyPreference(SETTINGS_PROFILE_FONT_KEY);
             }
         });
+        renderer = new TerminalRenderer(this, &isTerminalWidgetFocused);
+        clipboardHandler = new ClipboardHandler(this, this, &scrollToBottom, &focusTerminal);
+        processQuery = new TerminalProcessQuery(this);
+        registerPreferenceHandlers();
         createUI();
         trace("Apply preferences");
         applyPreferences();
@@ -4026,72 +3252,14 @@ public:
         }
     }
 
-    pid_t getChildPidFromHost() {
-        string result = captureHostToolboxCommand("get-child-pid", "", [vte.getPty().getFd()]);
-        if (result == null) {
-            warning("Failed to get child pid from host");
-            return -1;
-        }
-
-        return to!pid_t(result);
-    }
-
+    /* Process query logic moved to gx.tilix.terminal.process.TerminalProcessQuery.
+     * These wrappers maintain the public API used by session.d. */
     bool isProcessRunning() {
-        pid_t dummy;
-        return isProcessRunning(dummy);
+        return processQuery.isProcessRunning(gpid);
     }
 
-    /**
-     * Determines if a child process is running in the terminal,
-     * and returns the pid
-     */
-    bool isProcessRunning(out pid_t childPid) {
-        if (vte.getPty() is null)
-            return false;
-
-        if (isFlatpak()) {
-            childPid = getChildPidFromHost();
-        } else {
-            childPid = vte.getChildPid();
-        }
-
-        tracef("childPid=%d gpid=%d", childPid, gpid);
-        return (childPid != -1 && childPid != gpid);
-    }
-
-    /**
-     * Determines if a child process is running in the terminal,
-     * returns the name
-     */
     bool isProcessRunning(out string name) {
-        // TODO: be correct for flatpak sandbox
-        if (vte.getPty() is null)
-            return false;
-        pid_t childPid;
-        bool result = isProcessRunning(childPid);
-
-        if (childPid == -1) {
-            return false;
-        }
-
-        import std.file: read, FileException;
-        try {
-            string data;
-            if (isFlatpak()) {
-                data = captureHostToolboxCommand("get-proc-stat", to!string(childPid), []);
-            } else {
-                data = to!string(cast(char[])read(format("/proc/%d/stat", childPid)));
-            }
-
-            size_t rpar = data.lastIndexOf(")");
-            name = data[data.indexOf("(") + 1..rpar];
-        } catch (FileException fe) {
-            name = _("Unknown");
-            warning(fe);
-        }
-        name = replace(name, "\0", " ");
-
-        return result;
+        return processQuery.isProcessRunning(gpid, name);
     }
 
     /**
@@ -4288,6 +3456,26 @@ public:
         return _terminalUUID;
     }
 
+// ITerminalContext implementation
+public:
+    @property ExtendedVTE contextVte() { return vte; }
+    @property GSettings contextGsSettings() { return gsSettings; }
+    @property GSettings contextGsProfile() { return gsProfile; }
+    @property GSettings contextGsShortcuts() { return gsShortcuts; }
+    @property GlobalTerminalState terminalState() { return gst; }
+    @property string terminalUUID() { return _terminalUUID; }
+    @property Widget toplevelWidget() { return getToplevel(); }
+
+// ISyncInputEmitter implementation
+public:
+    @property bool isSynchronizedInput() {
+        return _synchronizeInput && _synchronizeInputOverride;
+    }
+
+    void emitSyncInput(SyncInputEvent event) {
+        onSyncInput.emit(this, event);
+    }
+
 // Events
 public:
     /**
@@ -4388,365 +3576,11 @@ public:
 
 
 
-/**
- * This feature has been copied from Pantheon Terminal and
- * translated from Vala to D. Thanks to Pantheon and Ikey Doherty for this.
- *
- * http://bazaar.launchpad.net/~elementary-apps/pantheon-terminal/trunk/view/head:/src/UnsafePasteDialog.vala
- */
-package class UnsafePasteDialog : MessageDialog {
-
-public:
-
-    this(Window parent, string cmd) {
-        super(parent, DialogFlags.MODAL, MessageType.WARNING, ButtonsType.NONE, null, null);
-        setTransientFor(parent);
-        getMessageArea().setMarginLeft(0);
-        getMessageArea().setMarginRight(0);
-        string[3] msg = getUnsafePasteMessage();
-        setMarkup("<span weight='bold' size='larger'>" ~ msg[0] ~ "</span>\n\n" ~ msg[1] ~ "\n" ~ msg[2] ~ "\n" );
-        setImage(new Image("dialog-warning", IconSize.DIALOG));
-
-        Label lblCmd = new Label(SimpleXML.markupEscapeText(cmd, cmd.length));
-        lblCmd.setUseMarkup(true);
-        lblCmd.setHalign(GtkAlign.START);
-        lblCmd.setEllipsize(PangoEllipsizeMode.END);
-
-        if (count(cmd,"\n") > 6) {
-            ScrolledWindow sw = new ScrolledWindow();
-            sw.setShadowType(ShadowType.ETCHED_IN);
-            sw.setPolicy(PolicyType.AUTOMATIC, PolicyType.AUTOMATIC);
-            sw.setHexpand(true);
-            sw.setVexpand(true);
-            sw.setSizeRequest(400, 140);
-            sw.add(lblCmd);
-            getMessageArea().add(sw);
-        } else {
-            getMessageArea().add(lblCmd);
-        }
-
-        Button btnCancel = new Button(_("Don't Paste"));
-        Button btnIgnore = new Button(_("Paste Anyway"));
-        btnIgnore.getStyleContext().addClass("destructive-action");
-        addActionWidget(btnCancel, 1);
-        addActionWidget(btnIgnore, 0);
-        showAll();
-        btnIgnore.grabFocus();
-    }
-}
+/* UnsafePasteDialog moved to gx.tilix.terminal.clipboard */
 
 
-private:
-/**
- * Constants used in Event.key.sendEvent to flag particular situations
- */
-enum SendEvent {
-    NONE = 0,
-    SYNC = 1,
-    NATURAL_COPY = 2
-}
-
-
-/************************************************************************
- * Block for supporting triggers
- ***********************************************************************/
-private:
-
-enum TriggerAction {
-    UPDATE_STATE,
-    EXECUTE_COMMAND,
-    SEND_NOTIFICATION,
-    UPDATE_TITLE,
-    PLAY_BELL,
-    SEND_TEXT,
-    INSERT_PASSWORD,
-    UPDATE_BADGE,
-    RUN_PROCESS
-}
-
-/**
- * Class that holds definition of trigger including compiled regex
- */
-class TerminalTrigger {
-
-public:
-
-    string pattern;
-    TriggerAction action;
-    string parameters;
-    Regex!char compiledRegex;
-
-    this(string pattern, string actionName, string parameters) {
-        this.pattern = pattern;
-        //this.action = action;
-        this.parameters = parameters;
-        switch (actionName) {
-            case SETTINGS_PROFILE_TRIGGER_UPDATE_STATE_VALUE:
-                action = TriggerAction.UPDATE_STATE;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_EXECUTE_COMMAND_VALUE:
-                action = TriggerAction.EXECUTE_COMMAND;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_SEND_NOTIFICATION_VALUE:
-                action = TriggerAction.SEND_NOTIFICATION;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_UPDATE_BADGE_VALUE:
-                action = TriggerAction.UPDATE_BADGE;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_UPDATE_TITLE_VALUE:
-                action = TriggerAction.UPDATE_TITLE;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_PLAY_BELL_VALUE:
-                action = TriggerAction.PLAY_BELL;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_SEND_TEXT_VALUE:
-                action = TriggerAction.SEND_TEXT;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_INSERT_PASSWORD_VALUE:
-                action = TriggerAction.INSERT_PASSWORD;
-                break;
-            case SETTINGS_PROFILE_TRIGGER_RUN_PROCESS_VALUE:
-                action = TriggerAction.RUN_PROCESS;
-                break;
-            default:
-                break;
-        }
-
-        //Triggers always use multi-line mode since we are getting a buffer from VTE
-        compiledRegex = regex(pattern, "m");
-    }
-}
-
-struct TerminalTriggerMatch {
-    TerminalTrigger trigger;
-    string[] groups;
-    size_t index;
-}
-
-/************************************************************************
- * Block for defining various DND structs and constants
- ***********************************************************************/
-private:
-/**
- * Constant used to identify terminal drag and drop
- */
-enum VTE_DND = "vte";
-
-/**
- * List of available Drop Targets for VTE
- */
-enum DropTargets {
-    URILIST,
-    STRING,
-    UTF8_TEXT,
-    TEXT,
-    COLOR,
-    /**
-     * Used when one VTE is dropped on another
-     */
-    VTE,
-    /**
-     * Used when session is dropped on terminal
-     */
-    SESSION
-};
-
-struct DragInfo {
-    bool isDragActive;
-    DragQuadrant dq;
-}
-
-/************************************************************************
- * Block for managing terminal state
- ***********************************************************************/
-private:
-
-/**
- * Struct for remembering terminal state, used to track
- * local and remote (i.e. SSH) states.
- */
-struct TerminalState {
-    string hostname;
-    string directory;
-    string username;
-
-    void clear() {
-        hostname.length = 0;
-        directory.length = 0;
-        username.length = 0;
-    }
-
-    bool hasState() {
-        return (hostname.length > 0 || directory.length > 0 || username.length > 0);
-    }
-}
-
-enum TerminalStateType {LOCAL, REMOTE};
-
-class GlobalTerminalState {
-private:
-    TerminalState local;
-    TerminalState remote;
-    string _localHostname;
-    string _initialCWD;
-    bool _initialized = false;
-
-    void updateHostname(string hostname) {
-        if (hostname.length > 0 && hostname != _localHostname) {
-            if (remote.hostname != hostname) {
-                remote.hostname = hostname;
-                remote.username.length = 0;
-                remote.directory.length = 0;
-            }
-        } else {
-            local.hostname = hostname;
-            remote.clear();
-        }
-        if (!_initialized) updateState();
-    }
-
-    void updateDirectory(string directory) {
-        if (remote.hasState()) {
-            remote.directory = directory;
-        } else {
-            local.directory = directory;
-        }
-        if (directory.length > 0 && !_initialized) updateState();
-    }
-
-    void updateUsername(string username) {
-        if (remote.hasState()) {
-            remote.username = username;
-        } else {
-            local.username = username;
-        }
-        if (username.length > 0 && !_initialized) updateState();
-    }
-
-public:
-
-    enum StateVariable {
-        HOSTNAME = "hostname",
-        USERNAME = "username",
-        DIRECTORY = "directory"
-    }
-
-    this() {
-        //Get local hostname to detect difference between remote and local
-        char[1024] systemHostname;
-        if (gethostname(cast(char*)&systemHostname, 1024) == 0) {
-            _localHostname = to!string(cast(char*)&systemHostname);
-            trace("Local Hostname: " ~ _localHostname);
-        }
-    }
-
-    void clear() {
-        local.clear();
-        remote.clear();
-    }
-
-    TerminalState getState(TerminalStateType type) {
-        final switch (type) {
-            case TerminalStateType.LOCAL: return local;
-            case TerminalStateType.REMOTE: return remote;
-        }
-    }
-
-    bool hasState(TerminalStateType type) {
-        final switch (type) {
-            case TerminalStateType.LOCAL: return local.hasState();
-            case TerminalStateType.REMOTE: return remote.hasState();
-        }
-    }
-
-    void updateState() {
-        if (!_initialized) {
-            _initialized = true;
-            trace("Terminal in initialized state");
-        }
-    }
-
-    void updateState(StateVariable variable, string value) {
-        final switch (variable) {
-            case StateVariable.HOSTNAME:
-                updateHostname(value);
-                break;
-            case StateVariable.USERNAME:
-                updateUsername(value);
-                break;
-            case StateVariable.DIRECTORY:
-                updateDirectory(value);
-                break;
-        }
-    }
-
-    void updateState(string hostname, string directory) {
-        //Is this a remote host?
-        if (hostname.length > 0 && hostname != localHostname) {
-            remote.hostname = hostname;
-            remote.directory = directory;
-        } else {
-            local.hostname = hostname;
-            local.directory = directory;
-            remote.clear();
-        }
-        if (directory.length > 0) {
-            updateState();
-        }
-        tracef("Current directory changed, hostname '%s', directory '%s'", currentHostname, currentDirectory);
-    }
-
-    /**
-     * if Remote is set returns that otherwise returns local
-     */
-    @property string currentHostname() {
-        if (remote.hasState()) return remote.hostname;
-        return local.hostname;
-    }
-
-    /**
-     * if Remote is set returns that otherwise returns local
-     */
-    @property string currentDirectory() {
-        if (remote.hasState()) return remote.directory;
-        return local.directory;
-    }
-
-    @property string currentUsername() {
-        if (remote.hasState()) return remote.username;
-        return local.username;
-    }
-
-    @property string currentLocalDirectory() {
-        return local.directory;
-    }
-
-    @property string initialCWD() {
-        return _initialCWD;
-    }
-
-    @property void initialCWD(string value) {
-        _initialCWD = value;
-    }
-
-    @property bool initialized() {
-        return _initialized;
-    }
-
-    @property string localHostname() {
-        return _localHostname;
-    }
-}
-
-/*
- * Terminal serialization constants
- */
-private:
-    enum NODE_OVERRIDE_CMD = "overrideCommand";
-    enum NODE_BADGE = "badge";
-    enum NODE_TITLE = "title";
-    enum NODE_READONLY = "readOnly";
-    enum NODE_SYNCHRONIZED_INPUT = "synchronizedInput";
+/* DnD types, trigger types, and serialization constants moved to gx.tilix.terminal.types */
+/* Terminal state types moved to gx.tilix.terminal.state */
 
 /**
  * Part of a workaround for passing function pointer to Spawn.async.

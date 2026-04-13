@@ -63,6 +63,7 @@ import gx.tilix.common;
 import gx.tilix.constants;
 import gx.tilix.preferences;
 import gx.tilix.terminal.terminal;
+import gx.tilix.terminal.types;
 
 
 enum SessionStateChange {
