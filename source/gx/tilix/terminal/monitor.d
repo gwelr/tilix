@@ -31,6 +31,21 @@ enum MonitorEventType {
 };
 
 /**
+ * Detected properties of the active foreground process.
+ * Extensible: add new fields here instead of growing the event signature.
+ */
+struct ProcessInfo {
+    /// PID of the active foreground process
+    pid_t pid;
+    /// Process name (e.g. "ssh", "vim", "bash")
+    string name;
+    /// True if any process in the local tree has effective UID 0
+    bool isRoot;
+    /// True if the foreground process is an SSH-family command
+    bool isSSH;
+}
+
+/**
  * Class that monitors processes to see if new child processes have been
  * started or finished and raises an event if detected. This class uses
  * a separate thread to monitor the processes and a timeoutDelegate to
@@ -45,7 +60,13 @@ private:
         synchronized {
             foreach(process; processes) {
                 if (process.eventType != MonitorEventType.NONE) {
-                    onChildProcess.emit(process.eventType, process.gpid, process.activePid, process.activeName, process.activeIsRoot);
+                    auto info = ProcessInfo(
+                        cast(pid_t) process.activePid,
+                        cast(string) process.activeName,
+                        cast(bool) process.activeIsRoot,
+                        cast(bool) process.activeIsSSH
+                    );
+                    onChildProcess.emit(process.eventType, process.gpid, info);
                     process.eventType = MonitorEventType.NONE;
                 }
             }
@@ -105,7 +126,7 @@ public:
     /**
      * When a process changes inform children
      */
-    GenericEvent!(MonitorEventType, GPid, pid_t, string, bool) onChildProcess;
+    GenericEvent!(MonitorEventType, GPid, ProcessInfo) onChildProcess;
 
     static @property ProcessMonitor instance() {
         if (!tilix.processMonitor) {
@@ -171,6 +192,19 @@ bool checkProcessTreeForRoot(pid_t startPid) {
     return false;
 }
 
+/**
+ * SSH-related process names that indicate a remote connection.
+ */
+immutable string[] SSH_PROCESS_NAMES = ["ssh", "scp", "sftp", "mosh", "sshfs"];
+
+/**
+ * Returns true if the given process name indicates an SSH session.
+ */
+bool isSSHProcess(string name) {
+    import std.algorithm : canFind;
+    return SSH_PROCESS_NAMES.canFind(name);
+}
+
 void monitorProcesses(int sleep, Tid tid) {
     bool abort = false;
     while (!abort) {
@@ -185,10 +219,14 @@ void monitorProcesses(int sleep, Tid tid) {
                 if (activeProcess !is null) {
                     // Check if active process or any of its ancestors is root
                     bool isRoot = checkProcessTreeForRoot(activeProcess.pid);
-                    if (activeProcess.pid != process.activePid || isRoot != process.activeIsRoot) {
+                    bool isSSH = isSSHProcess(activeProcess.name);
+                    if (activeProcess.pid != process.activePid
+                            || isRoot != process.activeIsRoot
+                            || isSSH != process.activeIsSSH) {
                         process.activeName = activeProcess.name;
                         process.activePid = activeProcess.pid;
                         process.activeIsRoot = isRoot;
+                        process.activeIsSSH = isSSH;
                         process.eventType = MonitorEventType.STARTED;
                     }
                 }
@@ -210,9 +248,61 @@ shared class ProcessStatus {
     pid_t activePid = -1;
     string activeName = "";
     bool activeIsRoot = false;
+    bool activeIsSSH = false;
     MonitorEventType eventType = MonitorEventType.NONE;
 
     this(GPid gpid) {
         this.gpid = gpid;
     }
+}
+
+// -- Unit tests --
+
+unittest {
+    // SSH process detection
+    assert(isSSHProcess("ssh"));
+    assert(isSSHProcess("scp"));
+    assert(isSSHProcess("sftp"));
+    assert(isSSHProcess("mosh"));
+    assert(isSSHProcess("sshfs"));
+
+    // Non-SSH processes
+    assert(!isSSHProcess("bash"));
+    assert(!isSSHProcess("vim"));
+    assert(!isSSHProcess("sudo"));
+    assert(!isSSHProcess("sshd"));  // daemon, not client
+    assert(!isSSHProcess("ssh-agent"));
+    assert(!isSSHProcess(""));
+}
+
+unittest {
+    // ProcessInfo struct construction
+    auto info = ProcessInfo(42, "ssh", false, true);
+    assert(info.pid == 42);
+    assert(info.name == "ssh");
+    assert(!info.isRoot);
+    assert(info.isSSH);
+}
+
+unittest {
+    // SSH precedence over root: when isSSH is true, root should be
+    // suppressed in the UI. This mirrors the logic in terminal.d's
+    // updateIndicators method.
+    auto sshAsRoot = ProcessInfo(1, "ssh", true, true);
+    bool showSSH = sshAsRoot.isSSH;
+    bool showRoot = !sshAsRoot.isSSH && sshAsRoot.isRoot;
+    assert(showSSH);
+    assert(!showRoot);  // root suppressed when SSH is active
+
+    auto rootOnly = ProcessInfo(2, "sudo", true, false);
+    showSSH = rootOnly.isSSH;
+    showRoot = !rootOnly.isSSH && rootOnly.isRoot;
+    assert(!showSSH);
+    assert(showRoot);
+
+    auto plainProcess = ProcessInfo(3, "vim", false, false);
+    showSSH = plainProcess.isSSH;
+    showRoot = !plainProcess.isSSH && plainProcess.isRoot;
+    assert(!showSSH);
+    assert(!showRoot);
 }

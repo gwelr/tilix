@@ -227,6 +227,7 @@ private:
     Image imgReadOnly;
     Image imgNewOuput;
     Label lblRootIndicator;
+    Label lblSSHIndicator;
 
     SimpleActionGroup sagTerminalActions;
 
@@ -425,7 +426,7 @@ private:
         import gdk.Screen;
         import gdk.Display;
         auto rootCss = new CssProvider();
-        rootCss.loadFromData(".tilix-root-title { background: rgba(204, 0, 0, 0.45); }");
+        rootCss.loadFromData(".ttyx-root-title { background: rgba(204, 0, 0, 0.45); }");
         StyleContext.addProviderForScreen(
             Display.getDefault().getDefaultScreen(),
             rootCss, ProviderPriority.APPLICATION);
@@ -436,6 +437,18 @@ private:
         lblRootIndicator.setTooltipText(_("Running as root"));
         lblRootIndicator.setNoShowAll(true);
         bTitle.packEnd(lblRootIndicator, false, false, 0);
+
+        //SSH Indicator label
+        auto sshCss = new CssProvider();
+        sshCss.loadFromData(".ttyx-ssh-title { background: rgba(26, 95, 180, 0.50); }");
+        StyleContext.addProviderForScreen(
+            Display.getDefault().getDefaultScreen(),
+            sshCss, ProviderPriority.APPLICATION);
+        lblSSHIndicator = new Label("");
+        lblSSHIndicator.setMarkup("<span weight=\"bold\">" ~ _("ssh") ~ "</span>");
+        lblSSHIndicator.setTooltipText(_("Connected via SSH"));
+        lblSSHIndicator.setNoShowAll(true);
+        bTitle.packEnd(lblSSHIndicator, false, false, 0);
 
         //Terminal Bell Spinner
         spBell = new Spinner();
@@ -3770,22 +3783,45 @@ private:
 
 // Process monitoring
 private:
-    void childProcessEvent(MonitorEventType eventType, GPid process, pid_t child, string name, bool isRoot) {
+    void childProcessEvent(MonitorEventType eventType, GPid process, ProcessInfo info) {
         if (process == gpid) {
-            activeProcessName = name;
+            activeProcessName = info.name;
             updateDisplayText();
-            updateRootIndicator(isRoot);
+            updateIndicators(info);
         }
     }
 
-    void updateRootIndicator(bool isRoot) {
-        if (lblRootIndicator is null || bTitle is null) return;
-        if (isRoot && gsSettings.getBoolean(SETTINGS_ROOT_INDICATOR)) {
-            lblRootIndicator.show();
-            bTitle.getStyleContext().addClass("ttyx-root-title");
-        } else {
-            lblRootIndicator.hide();
-            bTitle.getStyleContext().removeClass("ttyx-root-title");
+    /**
+     * Update title bar indicators based on detected process properties.
+     * SSH takes visual precedence over root: when connected to a remote
+     * host, the local root status is irrelevant — what matters is that
+     * the session is remote.
+     */
+    void updateIndicators(ProcessInfo info) {
+        if (bTitle is null) return;
+
+        bool showSSH = info.isSSH && gsSettings.getBoolean(SETTINGS_SSH_INDICATOR);
+        // Root indicator only shown when NOT in an SSH session
+        bool showRoot = !info.isSSH && info.isRoot && gsSettings.getBoolean(SETTINGS_ROOT_INDICATOR);
+
+        if (lblSSHIndicator !is null) {
+            if (showSSH) {
+                lblSSHIndicator.show();
+                bTitle.getStyleContext().addClass("ttyx-ssh-title");
+            } else {
+                lblSSHIndicator.hide();
+                bTitle.getStyleContext().removeClass("ttyx-ssh-title");
+            }
+        }
+
+        if (lblRootIndicator !is null) {
+            if (showRoot) {
+                lblRootIndicator.show();
+                bTitle.getStyleContext().addClass("ttyx-root-title");
+            } else {
+                lblRootIndicator.hide();
+                bTitle.getStyleContext().removeClass("ttyx-root-title");
+            }
         }
     }
 

@@ -139,6 +139,11 @@ revealer.right > scrolledwindow {
   font-weight: bold;
 }
 
+.ttyx-ssh-indicator {
+  color: #1A5FB4;
+  font-weight: bold;
+}
+
 .ttyx-bell {
   background: none;
   opacity: 0;
