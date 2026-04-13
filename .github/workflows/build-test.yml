@@ -94,7 +94,8 @@ jobs:
                 libsecret-1-dev \
                 libgtksourceview-3.0-dev \
                 libpeas-dev \
-                libvte-2.91-dev
+                libvte-2.91-dev \
+                xvfb
 
     # https://github.com/dlang-community/setup-dlang/tags
     - name: Install D compiler
@@ -106,4 +107,4 @@ jobs:
       run: dub build --compiler=$DC
 
     - name: Test
-      run: dub test --compiler=$DC
+      run: xvfb-run dub test --compiler=$DC
