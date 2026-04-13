@@ -153,6 +153,7 @@ immutable string[] SETTINGS_QUAKE_WINDOW_POSITION_VALUES = ["top", "bottom"];
 enum SETTINGS_PROCESS_MONITOR = "process-monitor";
 enum SETTINGS_ROOT_INDICATOR = "root-indicator";
 enum SETTINGS_SSH_INDICATOR = "ssh-indicator";
+enum SETTINGS_CORE_DUMP_PROTECTION = "core-dump-protection";
 
 //Proxy Environment Variables
 enum SETTINGS_SET_PROXY_ENV_KEY = "set-proxy-env";
@@ -213,8 +214,18 @@ enum SETTINGS_PROFILE_USE_BOLD_COLOR_KEY = "bold-color-set";
 enum SETTINGS_PROFILE_SHOW_SCROLLBAR_KEY = "show-scrollbar";
 enum SETTINGS_PROFILE_SCROLL_ON_OUTPUT_KEY = "scroll-on-output";
 enum SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY = "scroll-on-keystroke";
-enum SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY = "scrollback-unlimited";
 enum SETTINGS_PROFILE_SCROLLBACK_LINES_KEY = "scrollback-lines";
+enum SETTINGS_PROFILE_SCROLLBACK_LINES_MAX = 999_999;
+enum SETTINGS_PROFILE_SCROLLBACK_LINES_MIN = 256;
+
+/**
+ * Clamp scrollback lines to the valid range. Prevents unlimited (-1)
+ * scrollback which causes VTE to write history to disk.
+ */
+int clampScrollbackLines(int value) {
+    import std.algorithm : clamp;
+    return clamp(value, SETTINGS_PROFILE_SCROLLBACK_LINES_MIN, SETTINGS_PROFILE_SCROLLBACK_LINES_MAX);
+}
 
 enum SETTINGS_PROFILE_BACKSPACE_BINDING_KEY = "backspace-binding";
 immutable string[] SETTINGS_PROFILE_ERASE_BINDING_VALUES = ["auto", "ascii-backspace", "ascii-delete", "delete-sequence", "tty"];
@@ -557,4 +568,53 @@ unittest {
     ProfileInfo pi1 = ProfileInfo(false, "1234", "test");
     ProfileInfo pi2 = ProfileInfo(false, "1234", "test");
     assert(pi1 == pi2);
+}
+
+// -- Scrollback limits --
+
+unittest {
+    // Normal values within range are unchanged
+    assert(clampScrollbackLines(8192) == 8192);
+    assert(clampScrollbackLines(256) == 256);
+    assert(clampScrollbackLines(999_999) == 999_999);
+    assert(clampScrollbackLines(50_000) == 50_000);
+}
+
+unittest {
+    // Values below minimum are clamped up
+    assert(clampScrollbackLines(0) == SETTINGS_PROFILE_SCROLLBACK_LINES_MIN);
+    assert(clampScrollbackLines(100) == SETTINGS_PROFILE_SCROLLBACK_LINES_MIN);
+    assert(clampScrollbackLines(255) == SETTINGS_PROFILE_SCROLLBACK_LINES_MIN);
+}
+
+unittest {
+    // Values above maximum are clamped down
+    assert(clampScrollbackLines(1_000_000) == SETTINGS_PROFILE_SCROLLBACK_LINES_MAX);
+    assert(clampScrollbackLines(int.max) == SETTINGS_PROFILE_SCROLLBACK_LINES_MAX);
+}
+
+unittest {
+    // Unlimited (-1) is never allowed — clamped to minimum
+    assert(clampScrollbackLines(-1) == SETTINGS_PROFILE_SCROLLBACK_LINES_MIN);
+    assert(clampScrollbackLines(-1) > 0, "scrollback must always be positive to prevent VTE disk writes");
+}
+
+// -- Core dump protection --
+
+unittest {
+    // prctl PR_SET_DUMPABLE round-trip: set non-dumpable, verify, restore
+    import core.sys.linux.sys.prctl : prctl, PR_SET_DUMPABLE, PR_GET_DUMPABLE;
+
+    int original = prctl(PR_GET_DUMPABLE, 0, 0, 0, 0);
+
+    // Disable dumps
+    assert(prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) == 0, "prctl SET_DUMPABLE=0 failed");
+    assert(prctl(PR_GET_DUMPABLE, 0, 0, 0, 0) == 0, "process should be non-dumpable");
+
+    // Re-enable dumps
+    assert(prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) == 0, "prctl SET_DUMPABLE=1 failed");
+    assert(prctl(PR_GET_DUMPABLE, 0, 0, 0, 0) == 1, "process should be dumpable again");
+
+    // Restore original state
+    prctl(PR_SET_DUMPABLE, original, 0, 0, 0);
 }

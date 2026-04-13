@@ -515,6 +515,12 @@
       <description>If true, a blue tint and "ssh" label will be shown in the terminal title bar when a remote connection (ssh, scp, sftp, mosh) is active.</description>
     </key>
 
+    <key name="core-dump-protection" type="b">
+      <default>true</default>
+      <summary>Protect against memory dumps</summary>
+      <description>If true, the process is marked as non-dumpable to prevent core dumps and /proc/pid/mem access from leaking scrollback content. Disable this if you need to attach GDB or generate core dumps for debugging.</description>
+    </key>
+
     <!-- Global settings for triggers and custom links-->
     <key name="custom-hyperlinks" type="as">
       <default>[]</default>
@@ -734,12 +740,7 @@
     <key name="scrollback-lines" type="i">
       <default>8192</default>
       <summary>Number of lines to keep in scrollback</summary>
-      <description>Number of scrollback lines to keep around. You can scroll back in the terminal by this number of lines; lines that don't fit in the scrollback are discarded. If scrollback_unlimited is true, this value is ignored.</description>
-    </key>
-    <key name="scrollback-unlimited" type="b">
-      <default>false</default>
-      <summary>Whether an unlimited number of lines should be kept in scrollback</summary>
-      <description>If true, scrollback lines will never be discarded. The scrollback history is stored on disk temporarily, so this may cause the system to run out of disk space if there is a lot of output to the terminal.</description>
+      <description>Number of scrollback lines to keep around. You can scroll back in the terminal by this number of lines; lines that don't fit in the scrollback are discarded. Maximum 999999. Scrollback is kept in memory only and never written to disk.</description>
     </key>
     <key name="scroll-on-keystroke" type="b">
       <default>true</default>
@@ -1182,11 +1183,11 @@
     </key>
     <key name="terminal-reset" type="s">
       <default>'disabled'</default>
-      <summary>Keyboard shortcut to reset the terminal states</summary>
+      <summary>Keyboard shortcut to refresh the terminal</summary>
     </key>
     <key name="terminal-reset-and-clear" type="s">
-      <default>'disabled'</default>
-      <summary>Keyboard shortcut to reset the terminal states and clear the output buffer</summary>
+      <default>'&lt;Ctrl&gt;&lt;Shift&gt;l'</default>
+      <summary>Keyboard shortcut to secure clear (reset terminal and wipe scrollback)</summary>
     </key>
     <key name="terminal-copy" type="s">
       <default>'&lt;Ctrl&gt;&lt;Shift&gt;c'</default>

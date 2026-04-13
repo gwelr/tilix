@@ -862,8 +862,8 @@ private:
 
         menuSection = new GMenu();
         menuSection.append(_("Save Output…"), getActionDetailedName(ACTION_PREFIX, ACTION_SAVE));
-        menuSection.append(_("Reset"), getActionDetailedName(ACTION_PREFIX, ACTION_RESET));
-        menuSection.append(_("Reset and Clear"), getActionDetailedName(ACTION_PREFIX, ACTION_RESET_AND_CLEAR));
+        menuSection.append(_("Refresh"), getActionDetailedName(ACTION_PREFIX, ACTION_RESET));
+        menuSection.append(_("Secure Clear"), getActionDetailedName(ACTION_PREFIX, ACTION_RESET_AND_CLEAR));
         submenu.appendSection(null, menuSection);
 
         menuSection = new GMenu();
@@ -1786,6 +1786,10 @@ private:
 
             mmContext.appendItem(clipItem);
         }
+        GMenu clearSection = new GMenu();
+        clearSection.append(_("Secure Clear"), getActionDetailedName(ACTION_PREFIX, ACTION_RESET_AND_CLEAR));
+        mmContext.appendSection(null, clearSection);
+
         //Check if titlebar is hidden and add extra items
         if (!bTitle.isVisible()) {
             GMenu windowSection = new GMenu();
@@ -2149,9 +2153,8 @@ private:
             vte.setScrollOnKeystroke(gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY));
         });
 
-        prefRegistry.register([SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY, SETTINGS_PROFILE_SCROLLBACK_LINES_KEY], {
-            auto scrollLines = gsProfile.getBoolean(SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY) ? -1 : gsProfile.getInt(SETTINGS_PROFILE_SCROLLBACK_LINES_KEY);
-            vte.setScrollbackLines(scrollLines);
+        prefRegistry.register([SETTINGS_PROFILE_SCROLLBACK_LINES_KEY], {
+            vte.setScrollbackLines(clampScrollbackLines(gsProfile.getInt(SETTINGS_PROFILE_SCROLLBACK_LINES_KEY)));
         });
 
         prefRegistry.register([SETTINGS_PROFILE_BACKSPACE_BINDING_KEY], {

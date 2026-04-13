@@ -14,6 +14,8 @@ import std.process;
 import std.stdio;
 import std.variant;
 
+import core.sys.linux.sys.prctl : prctl, PR_SET_DUMPABLE;
+
 import cairo.ImageSurface;
 
 import gdk.Screen;
@@ -553,7 +555,7 @@ private:
     }
 
     void applyPreferences() {
-        foreach(key; [SETTINGS_THEME_VARIANT_KEY,SETTINGS_MENU_ACCELERATOR_KEY,SETTINGS_ACCELERATORS_ENABLED,SETTINGS_BACKGROUND_IMAGE_KEY]) {
+        foreach(key; [SETTINGS_THEME_VARIANT_KEY,SETTINGS_MENU_ACCELERATOR_KEY,SETTINGS_ACCELERATORS_ENABLED,SETTINGS_BACKGROUND_IMAGE_KEY,SETTINGS_CORE_DUMP_PROTECTION]) {
             applyPreference(key);
         }
     }
@@ -611,6 +613,12 @@ private:
                 }
                 foreach(window; appWindows) {
                     window.updateBackgroundImage();
+                }
+                break;
+            case SETTINGS_CORE_DUMP_PROTECTION:
+                size_t dumpable = gsGeneral.getBoolean(SETTINGS_CORE_DUMP_PROTECTION) ? 0 : 1;
+                if (prctl(PR_SET_DUMPABLE, dumpable, 0, 0, 0) != 0) {
+                    warning("Failed to set PR_SET_DUMPABLE");
                 }
                 break;
             default:

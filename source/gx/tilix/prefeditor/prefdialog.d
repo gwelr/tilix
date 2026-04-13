@@ -1659,6 +1659,7 @@ public:
 class AdvancedPreferences : Box {
 private:
     GSettings gsSettings;
+    BindingHelper bh;
 
     void createUI() {
         setAllMargins(this, 18);
@@ -1669,6 +1670,23 @@ private:
 
         uint row = 0;
         createAdvancedUI(grid, row, &getSettings);
+
+        // Security section
+        Label lblSecurity = new Label(format("<b>%s</b>", _("Security")));
+        lblSecurity.setUseMarkup(true);
+        lblSecurity.setHalign(GtkAlign.START);
+        lblSecurity.setMarginTop(12);
+        grid.attach(lblSecurity, 0, row, 3, 1);
+        row++;
+
+        grid.attach(createDescriptionLabel(_("Core dump protection prevents debuggers and other processes from reading terminal memory. Disable this if you need to debug ttyx_ with GDB or generate core dumps.")), 0, row, 2, 1);
+        row++;
+
+        CheckButton cbCoreDump = new CheckButton(_("Protect against memory dumps (disable core dumps)"));
+        bh.bind(SETTINGS_CORE_DUMP_PROTECTION, cbCoreDump, "active", GSettingsBindFlags.DEFAULT);
+        cbCoreDump.setMarginTop(6);
+        grid.attach(cbCoreDump, 0, row, 2, 1);
+        row++;
 
         this.add(grid);
     }
@@ -1682,7 +1700,12 @@ public:
     this(GSettings gsSettings) {
         super(Orientation.VERTICAL, 6);
         this.gsSettings = gsSettings;
+        bh = new BindingHelper(gsSettings);
         createUI();
+        addOnDestroy(delegate(Widget) {
+            bh.unbind();
+            bh = null;
+        });
     }
 
 }

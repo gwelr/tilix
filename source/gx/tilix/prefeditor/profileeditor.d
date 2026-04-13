@@ -1031,15 +1031,13 @@ private:
         bh.bind(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY, cbScrollOnKeystroke, "active", GSettingsBindFlags.DEFAULT);
         add(cbScrollOnKeystroke);
 
-        CheckButton cbLimitScroll = new CheckButton(_("Limit scrollback to:"));
-        bh.bind(SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY, cbLimitScroll, "active", GSettingsBindFlags.DEFAULT | GSettingsBindFlags.INVERT_BOOLEAN);
-        SpinButton sbScrollbackSize = new SpinButton(256.0, to!double(int.max), 256.0);
+        Label lblScrollback = new Label(_("Scrollback lines:"));
+        lblScrollback.setHalign(GtkAlign.START);
+        SpinButton sbScrollbackSize = new SpinButton(256.0, to!double(SETTINGS_PROFILE_SCROLLBACK_LINES_MAX), 256.0);
         bh.bind(SETTINGS_PROFILE_SCROLLBACK_LINES_KEY, sbScrollbackSize, "value", GSettingsBindFlags.DEFAULT);
-        bh.bind(SETTINGS_PROFILE_UNLIMITED_SCROLL_KEY, sbScrollbackSize, "sensitive",
-                GSettingsBindFlags.GET | GSettingsBindFlags.NO_SENSITIVITY | GSettingsBindFlags.INVERT_BOOLEAN);
 
         Box b = new Box(Orientation.HORIZONTAL, 12);
-        b.add(cbLimitScroll);
+        b.add(lblScrollback);
         b.add(sbScrollbackSize);
         add(b);
     }
