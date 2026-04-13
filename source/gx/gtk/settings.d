@@ -85,7 +85,14 @@ public:
      * when widgets have already been finalized.
      */
     void unbind() {
+        import core.memory : GC;
+
         if (_settings is null) return;
+        // Disable GC during unbind: on GLib 2.84+, the D GC can
+        // finalize GtkD wrappers mid-iteration, leaving the D object
+        // reference alive but its internal GObject pointer corrupt.
+        GC.disable();
+        scope(exit) GC.enable();
         foreach(binding; bindings) {
             if (binding.object is null) continue;
             // Check the underlying GObject pointer is still valid

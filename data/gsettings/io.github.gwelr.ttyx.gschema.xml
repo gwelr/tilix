@@ -509,6 +509,11 @@
       <summary>Show visual indicator when running as root</summary>
       <description>If true, a red tint and "as root" label will be shown in the terminal title bar when any process is running with elevated privileges.</description>
     </key>
+    <key name="ssh-indicator" type="b">
+      <default>true</default>
+      <summary>Show visual indicator for SSH sessions</summary>
+      <description>If true, a blue tint and "ssh" label will be shown in the terminal title bar when a remote connection (ssh, scp, sftp, mosh) is active.</description>
+    </key>
 
     <!-- Global settings for triggers and custom links-->
     <key name="custom-hyperlinks" type="as">
