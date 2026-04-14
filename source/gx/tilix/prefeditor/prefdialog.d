@@ -1614,6 +1614,11 @@ private:
         bh.bind(SETTINGS_UNSAFE_PASTE_ALERT_KEY, cbUnsafe, "active", GSettingsBindFlags.DEFAULT);
         add(cbUnsafe);
 
+        //Warn on multi-line paste
+        CheckButton cbWarnMultiline = new CheckButton(_("Show review dialog for multi-line paste"));
+        bh.bind(SETTINGS_WARN_MULTILINE_PASTE_KEY, cbWarnMultiline, "active", GSettingsBindFlags.DEFAULT);
+        add(cbWarnMultiline);
+
         //Strip Paste
         CheckButton cbStrip = new CheckButton(_("Strip first character of paste if comment or variable declaration"));
         bh.bind(SETTINGS_STRIP_FIRST_COMMENT_CHAR_ON_PASTE_KEY, cbStrip, "active", GSettingsBindFlags.DEFAULT);
@@ -1633,6 +1638,21 @@ private:
         CheckButton cbCopyOnSelect = new CheckButton(_("Automatically copy text to clipboard when selecting"));
         bh.bind(SETTINGS_COPY_ON_SELECT_KEY, cbCopyOnSelect, "active", GSettingsBindFlags.DEFAULT);
         add(cbCopyOnSelect);
+
+        //Clipboard auto-clear
+        CheckButton cbAutoClear = new CheckButton(_("Automatically clear clipboard after timeout"));
+        bh.bind(SETTINGS_CLIPBOARD_AUTO_CLEAR_KEY, cbAutoClear, "active", GSettingsBindFlags.DEFAULT);
+        add(cbAutoClear);
+
+        Box bAutoClearTimeout = new Box(Orientation.HORIZONTAL, 12);
+        Label lblAutoClearTimeout = new Label(_("Clear clipboard after (seconds)"));
+        SpinButton sbAutoClearTimeout = new SpinButton(5, 300, 5);
+        bh.bind(SETTINGS_CLIPBOARD_AUTO_CLEAR_TIMEOUT_KEY, sbAutoClearTimeout, "value", GSettingsBindFlags.DEFAULT);
+        bh.bind(SETTINGS_CLIPBOARD_AUTO_CLEAR_KEY, sbAutoClearTimeout, "sensitive", GSettingsBindFlags.DEFAULT);
+        bh.bind(SETTINGS_CLIPBOARD_AUTO_CLEAR_KEY, lblAutoClearTimeout, "sensitive", GSettingsBindFlags.DEFAULT);
+        bAutoClearTimeout.add(lblAutoClearTimeout);
+        bAutoClearTimeout.add(sbAutoClearTimeout);
+        add(bAutoClearTimeout);
 
         //Root Indicator
         CheckButton cbRootIndicator = new CheckButton(_("Show visual indicator when running as root"));

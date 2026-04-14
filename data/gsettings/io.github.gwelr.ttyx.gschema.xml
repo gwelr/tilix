@@ -283,6 +283,11 @@
       <summary>Alert the user about unsafe paste</summary>
       <description>Warn the user when pasting a command into the terminal that might be considered unsafe.</description>
     </key>
+    <key name="warn-multiline-paste" type="b">
+      <default>true</default>
+      <summary>Show review dialog for multi-line paste</summary>
+      <description>If true, pasting multi-line content will show the advanced paste dialog for review before pasting. This prevents accidental execution of commands from copied snippets.</description>
+    </key>
     <key name="paste-strip-first-char" type="b">
       <default>false</default>
       <summary>Strip the first character from a paste when comment or variable declaration</summary>
@@ -307,6 +312,16 @@
       <default>false</default>
       <summary>Automatically copy selected text to clipboard</summary>
       <description>If true, when text is selected in the terminal it is automatically copied to the clipboard.</description>
+    </key>
+    <key name="clipboard-auto-clear" type="b">
+      <default>false</default>
+      <summary>Automatically clear clipboard after timeout</summary>
+      <description>If true, the clipboard will be automatically cleared after a configurable timeout when text is copied from the terminal. Prevents sensitive data from lingering in the clipboard.</description>
+    </key>
+    <key name="clipboard-auto-clear-timeout" type="u">
+      <default>30</default>
+      <summary>Clipboard auto-clear timeout in seconds</summary>
+      <description>Number of seconds to wait before automatically clearing the clipboard after a copy operation. Valid range: 5-300.</description>
     </key>
     <!-- Search Options -->
     <key name="search-default-match-case" type="b">

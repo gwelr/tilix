@@ -134,7 +134,8 @@ private:
 
 public:
     this(Window parent, string text, bool unsafe) {
-        super(_("Advanced Paste"), parent, GtkDialogFlags.MODAL + GtkDialogFlags.USE_HEADER_BAR, [_("Paste"), _("Cancel")], [GtkResponseType.APPLY, GtkResponseType.CANCEL]);
+        string title = unsafe ? _("Unsafe Paste") : _("Review Paste");
+        super(title, parent, GtkDialogFlags.MODAL + GtkDialogFlags.USE_HEADER_BAR, [_("Paste"), _("Cancel")], [GtkResponseType.APPLY, GtkResponseType.CANCEL]);
         setTransientFor(parent);
         setDefaultResponse(GtkResponseType.APPLY);
         gsSettings = new GSettings(SETTINGS_ID);
