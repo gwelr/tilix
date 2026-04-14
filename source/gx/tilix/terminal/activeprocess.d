@@ -204,3 +204,72 @@ Process[pid_t] getActiveProcessList() {
     }
     return ret;
 }
+
+/**
+ * Get the foreground process for a specific shell PID by reading
+ * only the shell's /proc entry to find the terminal foreground
+ * process group, then locating the process leader of that group.
+ *
+ * This is much cheaper than getActiveProcessList() which scans
+ * all PIDs on the system. Reads 2-3 /proc files per shell instead
+ * of hundreds.
+ */
+ForegroundProcessInfo getForegroundProcess(pid_t shellPid) {
+    try {
+        // Read the shell's stat to get the foreground process group (tpgid)
+        string statData = to!string(cast(char[]) read(format("/proc/%d/stat", shellPid)));
+        size_t rpar = statData.lastIndexOf(")");
+        if (rpar == -1) return ForegroundProcessInfo.init;
+        string[] fields = statData[rpar + 2 .. $].split;
+        if (fields.length < 6) return ForegroundProcessInfo.init;
+
+        pid_t tpgid = to!pid_t(fields[5]); // field 8 in stat = index 5 after name
+        if (tpgid <= 0) return ForegroundProcessInfo.init;
+
+        // If the foreground process group is the shell itself, nothing interesting is running
+        if (tpgid == shellPid) return ForegroundProcessInfo.init;
+
+        // Read the foreground process's stat to get its name
+        string fgStatData = to!string(cast(char[]) read(format("/proc/%d/stat", tpgid)));
+        size_t fgRpar = fgStatData.lastIndexOf(")");
+        if (fgRpar == -1) return ForegroundProcessInfo.init;
+        string fgName = fgStatData[fgStatData.indexOf("(") + 1 .. fgRpar];
+
+        return ForegroundProcessInfo(tpgid, fgName);
+    } catch (Exception e) {
+        // Process may have exited between checks
+        return ForegroundProcessInfo.init;
+    }
+}
+
+/**
+ * Lightweight result from getForegroundProcess — just PID and name,
+ * no full Process object needed.
+ */
+struct ForegroundProcessInfo {
+    pid_t pid = -1;
+    string name;
+
+    bool isValid() const { return pid > 0; }
+}
+
+// -- Unit tests --
+
+unittest {
+    // getForegroundProcess on PID 1 (init) should return invalid
+    auto info = getForegroundProcess(1);
+    assert(!info.isValid());
+}
+
+unittest {
+    // getForegroundProcess on non-existent PID should return invalid
+    auto info = getForegroundProcess(999_999_999);
+    assert(!info.isValid());
+}
+
+unittest {
+    // ForegroundProcessInfo default is invalid
+    auto info = ForegroundProcessInfo.init;
+    assert(!info.isValid());
+    assert(info.pid == -1);
+}
