@@ -209,26 +209,30 @@ void monitorProcesses(int sleep, Tid tid) {
     bool abort = false;
     while (!abort) {
         synchronized {
-            // At this point we have a list of active processes of
-            // all open terminals. We need to get these using shell
-            // PID and will store them to raise events for each terminal.
-            auto activeProcesses = getActiveProcessList();
+            // For each monitored terminal, query only its foreground process
+            // instead of scanning all PIDs on the system.
             foreach(process; processes) {
-                auto activeProcess  = activeProcesses.get(process.gpid, null);
-                // No need to raise event for same process.
-                if (activeProcess !is null) {
-                    // Check if active process or any of its ancestors is root
-                    bool isRoot = checkProcessTreeForRoot(activeProcess.pid);
-                    bool isSSH = isSSHProcess(activeProcess.name);
-                    if (activeProcess.pid != process.activePid
+                auto fg = getForegroundProcess(process.gpid);
+                if (fg.isValid()) {
+                    bool isRoot = checkProcessTreeForRoot(fg.pid);
+                    bool isSSH = isSSHProcess(fg.name);
+                    if (fg.pid != process.activePid
                             || isRoot != process.activeIsRoot
                             || isSSH != process.activeIsSSH) {
-                        process.activeName = activeProcess.name;
-                        process.activePid = activeProcess.pid;
+                        process.activeName = fg.name;
+                        process.activePid = fg.pid;
                         process.activeIsRoot = isRoot;
                         process.activeIsSSH = isSSH;
                         process.eventType = MonitorEventType.STARTED;
                     }
+                } else if (process.activePid != -1) {
+                    // Foreground process exited (shell is back in foreground).
+                    // Clear SSH and root indicators.
+                    process.activeName = "";
+                    process.activePid = -1;
+                    process.activeIsRoot = false;
+                    process.activeIsSSH = false;
+                    process.eventType = MonitorEventType.STARTED;
                 }
             }
         }
