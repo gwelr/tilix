@@ -110,6 +110,25 @@ ttyx_ automatically migrates your configuration on first run:
 
 After verifying ttyx_ works correctly, you can remove `~/.config/tilix/` manually.
 
+## Troubleshooting
+
+### App icon shows as a broken placeholder
+
+This typically means a stale icon cache from a previous install (often Flatpak). Clear the user-level cache and let GTK regenerate it:
+
+```bash
+rm -f ~/.local/share/flatpak/exports/share/icons/hicolor/icon-theme.cache
+gtk-update-icon-cache -f ~/.local/share/flatpak/exports/share/icons/hicolor/
+```
+
+Then relaunch ttyx_.
+
+### Quake mode doesn't position correctly (Wayland)
+
+Quake mode relies on X11 window positioning APIs that Wayland compositors don't expose to applications. On Wayland, behavior is compositor-dependent — GNOME Shell in particular cannot position windows from the application side.
+
+**Workaround**: use ttyx_ under an X11 session if you need Quake mode. On wlroots-based compositors (Sway, Hyprland), support may be added in a future release via the `wlr-layer-shell` protocol.
+
 ## Contributing
 
 This is a freetime project. I work on what interests me, when I have time.
