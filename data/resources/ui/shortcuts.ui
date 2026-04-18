@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <!-- interface-requires gtk+ 3.17 -->
-  <object class="GtkShortcutsWindow" id="shortcuts-tilix">
+  <object class="GtkShortcutsWindow" id="shortcuts-ttyx">
     <property name="modal">1</property>
     <child>
       <object class="GtkShortcutsSection">
@@ -628,7 +628,7 @@
             <child>
               <object class="GtkShortcutsShortcut" id ="nautilus-open">
                 <property name="visible">1</property>
-                <property name="title" translatable="yes" context="shortcut window">Open in Tilix</property>
+                <property name="title" translatable="yes" context="shortcut window">Open in ttyx</property>
               </object>
             </child>
           </object>

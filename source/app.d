@@ -28,7 +28,7 @@ import gx.tilix.constants;
 
 int main(string[] args) {
     static if (USE_FILE_LOGGING) {
-        sharedLog = new shared FileLogger("/tmp/tilix.log");
+        sharedLog = new shared FileLogger("/tmp/ttyx.log");
     }
 
     bool newProcess = false;
@@ -104,7 +104,7 @@ int main(string[] args) {
     // Note used to pass empty args but was interfering with GTK default args
     Main.init(args);
 
-    trace(format("Starting tilix with %d arguments...", args.length));
+    trace(format("Starting ttyx with %d arguments...", args.length));
     foreach(i, arg; args) {
         trace(format("arg[%d] = %s",i, arg));
         // Workaround issue with Unity and older Gnome Shell when DBusActivatable sometimes CWD is set to /, see #285
@@ -125,14 +125,20 @@ int main(string[] args) {
             return 0;
         }
     }
-    //append TILIX_ID to args if present
+    //append terminal UUID to args if present (check TTYX_ID first, TILIX_ID for backwards compat)
     try {
-        string terminalUUID = environment["TILIX_ID"];
-        trace("Inserting terminal UUID " ~ terminalUUID);
-        args ~= ("--" ~ CMD_TERMINAL_UUID ~ "=" ~ terminalUUID);
+        string terminalUUID;
+        try { terminalUUID = environment["TTYX_ID"]; } catch (Exception) {}
+        if (terminalUUID is null) {
+            try { terminalUUID = environment["TILIX_ID"]; } catch (Exception) {}
+        }
+        if (terminalUUID !is null) {
+            trace("Inserting terminal UUID " ~ terminalUUID);
+            args ~= ("--" ~ CMD_TERMINAL_UUID ~ "=" ~ terminalUUID);
+        }
     }
     catch (Exception e) {
-        trace("No tilix UUID found");
+        trace("No terminal UUID found");
     }
 
     //Version checking cribbed from grestful, thanks!

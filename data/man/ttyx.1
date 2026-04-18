@@ -1,21 +1,21 @@
-.\" Manpage for Tilix.
-.\" add issues at https://github.com/gnunn1/tilix to correct errors or typos.
-.TH TILIX 1 "26 December 2016" "1.4.0" "Tilix Commands"
+.\" Manpage for ttyx_.
+.\" add issues at https://github.com/gwelr/ttyx_ to correct errors or typos.
+.TH TTYX 1 "2026-04-17" "1.1.1" "ttyx Commands"
 .SH NAME
-\fBtilix\fP \- Tiling GTK3 terminal emulator for GNOME 
+\fBttyx\fP \- Tiling GTK3 terminal emulator for GNOME (forked from Tilix)
 .SH SYNOPSIS
-.B tilix
+.B ttyx
 .RI [ options ]
 .SH DESCRIPTION
-\fBtilix\fP is an advanced GTK3 tiling terminal emulator designed to adhere to GNOME Human Interface Guidelines.
+\fBttyx\fP is an advanced GTK3 tiling terminal emulator designed to adhere to GNOME Human Interface Guidelines, forked from Tilix.
 .SH OPTIONS
-The \fBtilix\fP application accepts the following command line parameters:
+The \fBttyx\fP application accepts the following command line parameters:
 .TP
-.B \-h \-\-help 
+.B \-h \-\-help
 Show help options.
 .TP
 .B \-v \-\-version
-Show the version of Tilix as well as the versions of dependent components.
+Show the version of ttyx_ as well as the versions of dependent components.
 .TP
 .B \-w \-\-working-directory=DIRECTORY
 Set the working directory of the terminal.
@@ -30,7 +30,7 @@ Set the title of the new terminal.
 Specify a previously saved session to re-load the layout and layout options from. This will not restore the terminal to where it was left off, rather new terminals are created.
 .TP
 .B \-a \-\-action=ACTION_NAME
-Perform one of the following actions in the current Tilix instance:
+Perform one of the following actions in the current ttyx instance:
 .IP
 .B session-add-right
 Add a new terminal rightwards of the current one.
@@ -39,10 +39,10 @@ Add a new terminal rightwards of the current one.
 Add a new terminal below the current terminal.
 .IP
 .B app-new-session
-Create a new Tilix session within the current window.
+Create a new ttyx session within the current window.
 .IP
 .B app-new-window
-Create a new Tilix window.
+Create a new ttyx window.
 .TP
 .B \-e \-\-command=COMMAND
 Execute all text after this parameter as a command, thus this parameter must be the last parameter.
@@ -75,7 +75,7 @@ Do not show client side decorations and toolbar.
 Do not show window borders.
 .TP
 .B \-\-new\-process
-Start an additional Tilix instance as a new process. By default and as per GTK+ version 3 guidelines, Tilix maintains a single process that all windows belong to. This option forces Tilix to start as a separate process. This is not recommended and only intended for debugging purposes. Its use will prevent different Tilix windows from communicating with each other. 
+Start an additional ttyx instance as a new process. By default and as per GTK+ version 3 guidelines, ttyx maintains a single process that all windows belong to. This option forces ttyx to start as a separate process. This is not recommended and only intended for debugging purposes. Its use will prevent different ttyx windows from communicating with each other.
 .TP
 .B \-\-geometry=GEOMETRY
 Set the window size; for example: 80x24, or 80x24+200+200 (COLSxROWS+X+Y).
@@ -84,13 +84,13 @@ Set the window size; for example: 80x24, or 80x24+200+200 (COLSxROWS+X+Y).
 Open a window in Quake mode or toggle existing Quake mode window visibility.
 .TP
 .B \-\-preferences
-Show the Tilix preferences dialog directly.
+Show the ttyx preferences dialog directly.
 .TP
 .B \-\-display=DISPLAY
 Use the specified X display.
 .SH SEE ALSO
 None
 .SH BUGS
-See bugs at https://github.com/gnunn1/tilix/issues
+See bugs at https://github.com/gwelr/ttyx_/issues
 .SH AUTHOR
-Gerald Nunn and other contributors.
+gwelr and other contributors. Forked from Tilix by Gerald Nunn.

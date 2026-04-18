@@ -236,7 +236,7 @@ private:
         if (useTabs) {
             nb.getStyleContext().addClass("ttyx-background");
             nb.setScrollable(true);
-            nb.setGroupName("tilix");
+            nb.setGroupName("ttyx");
             nb.addOnCreateWindow(&onCreateWindow);
             nb.setCanFocus(false);
         }

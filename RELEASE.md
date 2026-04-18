@@ -30,8 +30,11 @@ ttyx_ Release Process
 
    Build & Performance:
 
-   Security:
+   Miscellaneous:
    ```
+   Note: `appstreamcli news-to-metainfo` only accepts standard section names
+   (Features, Bugfixes, Miscellaneous, Notes, Contributors). Use `Features:`
+   for security items prefixed with "Security:".
 
 5. Run `extract-strings.sh` to update translation templates.
 
@@ -41,37 +44,12 @@ ttyx_ Release Process
    git push
    ```
 
-## Build release artifact
-
-7. Build the release binary:
-   ```
-   meson setup builddir-release --buildtype=release -Dstrip=true --wipe
-   ninja -C builddir-release
-   meson test -C builddir-release --print-errorlogs
-   ```
-
-8. Assemble the tarball:
-   ```
-   mkdir -p /tmp/ttyx-package
-   cp builddir-release/ttyx /tmp/ttyx-package/
-   cp -r data/schemes /tmp/ttyx-package/
-   cp -r data/icons /tmp/ttyx-package/
-   cp data/gsettings/io.github.gwelr.ttyx.gschema.xml /tmp/ttyx-package/
-   cp data/dbus/io.github.gwelr.ttyx.service /tmp/ttyx-package/
-   cp data/pkg/desktop/io.github.gwelr.ttyx.desktop.in /tmp/ttyx-package/io.github.gwelr.ttyx.desktop
-   cp data/scripts/ttyx_int.sh /tmp/ttyx-package/
-   cp builddir-release/data/ttyx.gresource /tmp/ttyx-package/
-   cp data/man/ttyx.1 /tmp/ttyx-package/
-   cp LICENSE README.md /tmp/ttyx-package/
-   cd /tmp && tar czf ttyx-X.Y.Z_x86_64-linux-gnu.tar.gz -C ttyx-package .
-   ```
-
 ## Build Flatpak bundle
 
-9. Update the Flatpak manifest tag to the new version:
+7. Update the Flatpak manifest tag to the new version:
    - `flatpak/io.github.gwelr.ttyx.yaml` (change `tag: vX.Y.Z`)
 
-10. Build the Flatpak (requires `flatpak-builder`, GNOME 48 SDK):
+8. Build the Flatpak (requires `flatpak-builder`, GNOME 48 SDK):
     ```
     flatpak-builder --user --install-deps-from=flathub --force-clean \
       builddir-flatpak flatpak/io.github.gwelr.ttyx.yaml
@@ -83,17 +61,15 @@ ttyx_ Release Process
 
 ## Sign and checksum
 
-11. Generate signed checksums (include both tarball and Flatpak):
+9. Generate signed checksums:
     ```
-    sha256sum /tmp/ttyx-X.Y.Z_x86_64-linux-gnu.tar.gz \
-              /tmp/ttyx-X.Y.Z_x86_64.flatpak \
-              > /tmp/ttyx-X.Y.Z_SHA256SUMS
+    sha256sum /tmp/ttyx-X.Y.Z_x86_64.flatpak > /tmp/ttyx-X.Y.Z_SHA256SUMS
     gpg --clearsign /tmp/ttyx-X.Y.Z_SHA256SUMS
     ```
 
 ## Publish
 
-12. Create the GitHub release **with all assets in one shot** (do NOT
+10. Create the GitHub release **with all assets in one shot** (do NOT
     upload assets after creation — GitHub's immutable releases will
     block subsequent uploads):
     ```
@@ -101,18 +77,17 @@ ttyx_ Release Process
       --title "ttyx_ vX.Y.Z" \
       --target master \
       --notes-file /path/to/release-notes.md \
-      /tmp/ttyx-X.Y.Z_x86_64-linux-gnu.tar.gz \
       /tmp/ttyx-X.Y.Z_x86_64.flatpak \
       /tmp/ttyx-X.Y.Z_SHA256SUMS.asc
     ```
 
 ## Post-release
 
-13. Bump version to next development version in:
+11. Bump version to next development version in:
     - `meson.build`
     - `source/gx/tilix/constants.d`
 
-14. Commit and push:
+12. Commit and push:
     ```
     git commit -a -m "chore: Post-release version bump to X.Y.Z+1"
     git push

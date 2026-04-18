@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 # This example is contributed by Martin Enlund
-# Example modified for Tilix
+# Example modified for ttyx (originally Tilix)
 # Shortcuts Provider was inspired by captain nemo extension
 
 from gettext import gettext, textdomain
@@ -40,7 +40,7 @@ def open_terminal_in_file(filename):
 
 # Nautilus 43 doesn't offer the LocationWidgetProvider any more
 if hasattr(Nautilus, "LocationWidgetProvider"):
-    class OpenTilixShortcutProvider(GObject.GObject,
+    class OpenTtyxShortcutProvider(GObject.GObject,
                                     Nautilus.LocationWidgetProvider):
 
         def __init__(self):
@@ -78,7 +78,7 @@ if hasattr(Nautilus, "LocationWidgetProvider"):
             return None
 
 
-class OpenTilixExtension(GObject.GObject, Nautilus.MenuProvider):
+class OpenTtyxExtension(GObject.GObject, Nautilus.MenuProvider):
 
     def _open_terminal(self, file_):
         if file_.get_uri_scheme() in REMOTE_URI_SCHEME:
@@ -116,15 +116,15 @@ class OpenTilixExtension(GObject.GObject, Nautilus.MenuProvider):
             if file_.get_uri_scheme() in REMOTE_URI_SCHEME:
                 uri = _checkdecode(file_.get_uri())
                 item = Nautilus.MenuItem(name='NautilusPython::open_remote_item',
-                                         label=_(u'Open Remote Tilix'),
-                                         tip=_(u'Open Remote Tilix In {}').format(uri))
+                                         label=_(u'Open Remote ttyx'),
+                                         tip=_(u'Open Remote ttyx In {}').format(uri))
                 item.connect('activate', self._menu_activate_cb, file_)
                 items.append(item)
 
             filename = _checkdecode(file_.get_name())
             item = Nautilus.MenuItem(name='NautilusPython::open_file_item',
-                                     label=_(u'Open In Tilix'),
-                                     tip=_(u'Open Tilix In {}').format(filename))
+                                     label=_(u'Open In ttyx'),
+                                     tip=_(u'Open ttyx In {}').format(filename))
             item.connect('activate', self._menu_activate_cb, file_)
             items.append(item)
 
@@ -135,14 +135,14 @@ class OpenTilixExtension(GObject.GObject, Nautilus.MenuProvider):
         items = []
         if file_.get_uri_scheme() in REMOTE_URI_SCHEME:
             item = Nautilus.MenuItem(name='NautilusPython::open_bg_remote_item',
-                                     label=_(u'Open Remote Tilix Here'),
-                                     tip=_(u'Open Remote Tilix In This Directory'))
+                                     label=_(u'Open Remote ttyx Here'),
+                                     tip=_(u'Open Remote ttyx In This Directory'))
             item.connect('activate', self._menu_activate_cb, file_)
             items.append(item)
 
         item = Nautilus.MenuItem(name='NautilusPython::open_bg_file_item',
-                                 label=_(u'Open Tilix Here'),
-                                 tip=_(u'Open Tilix In This Directory'))
+                                 label=_(u'Open ttyx Here'),
+                                 tip=_(u'Open ttyx In This Directory'))
         item.connect('activate', self._menu_background_activate_cb, file_)
         items.append(item)
         return items

@@ -10,6 +10,8 @@ import std.experimental.logger;
 import std.file;
 import std.format;
 import std.path;
+
+import glib.Util;
 import std.process;
 import std.stdio;
 import std.variant;
@@ -508,6 +510,7 @@ private:
             applyPreference(key);
         });
 
+        migrateConfigFromTilix();
         initProfileManager();
         initBookmarkManager();
         bmMgr.load();
@@ -552,6 +555,32 @@ private:
             bmMgr.save();
         }
         tilix = null;
+    }
+
+    /**
+     * Migrate config directory from ~/.config/tilix/ to ~/.config/ttyx/
+     * on first run after switching from Tilix. Copies (does not move)
+     * the directory so the original remains as a backup.
+     */
+    void migrateConfigFromTilix() {
+        string oldConfig = buildPath(Util.getUserConfigDir(), "tilix");
+        string newConfig = buildPath(Util.getUserConfigDir(), APPLICATION_CONFIG_FOLDER);
+        if (exists(oldConfig) && !exists(newConfig)) {
+            try {
+                mkdirRecurse(newConfig);
+                foreach (entry; dirEntries(oldConfig, SpanMode.breadth)) {
+                    string target = buildPath(newConfig, entry.name[oldConfig.length + 1 .. $]);
+                    if (entry.isDir) {
+                        mkdirRecurse(target);
+                    } else {
+                        copy(entry.name, target);
+                    }
+                }
+                info("Migrated config from " ~ oldConfig ~ " to " ~ newConfig);
+            } catch (Exception e) {
+                warning("Config migration failed: " ~ e.msg);
+            }
+        }
     }
 
     void applyPreferences() {

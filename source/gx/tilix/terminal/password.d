@@ -63,7 +63,8 @@ private:
     enum COLUMN_NAME = 0;
     enum COLUMN_ID = 1;
 
-    enum SCHEMA_NAME = "com.gexperts.tilix.Password";
+    enum SCHEMA_NAME = "io.github.gwelr.ttyx.Password";
+    enum LEGACY_SCHEMA_NAME = "com.gexperts.tilix.Password";
 
     enum ATTRIBUTE_ID = "id";
     enum ATTRIBUTE_DESCRIPTION = "description";
@@ -193,7 +194,7 @@ private:
                     ListG list = collection.getItems();
                     Item[] items = list.toArray!Item;
                     foreach (item; items) {
-                        if (item.getSchemaName() == SCHEMA_NAME) {
+                        if (item.getSchemaName() == SCHEMA_NAME || item.getSchemaName() == LEGACY_SCHEMA_NAME) {
                             string itemID = to!string(cast(char*)item.getAttributes().lookup(cast(void*)attrID));
                             trace("ItemID " ~ itemID);
                             if (id == itemID) {
@@ -263,7 +264,7 @@ private:
         Item[] items = list.toArray!Item;
         rows.length = 0;
         foreach (item; items) {
-            if (item.getSchemaName() == SCHEMA_NAME) {
+            if (item.getSchemaName() == SCHEMA_NAME || item.getSchemaName() == LEGACY_SCHEMA_NAME) {
                 string id = to!string(cast(char*)item.getAttributes().lookup(cast(void*)attrID));
                 rows ~= [item.getLabel(), id];
             }

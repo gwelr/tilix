@@ -70,5 +70,5 @@ ShortcutsWindow getShortcutWindow() {
         trace("Didn't find profile ShortcutGroup");
     }
 
-    return cast(ShortcutsWindow) builder.getObject("shortcuts-tilix");
+    return cast(ShortcutsWindow) builder.getObject("shortcuts-ttyx");
 }

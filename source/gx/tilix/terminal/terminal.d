@@ -2472,9 +2472,9 @@ private:
                 flags = flags | GSpawnFlags.FILE_AND_ARGV_ZERO;
             }
         }
-        string[] envv = ["TILIX_ID=" ~ uuid];
+        string[] envv = ["TTYX_ID=" ~ uuid, "TILIX_ID=" ~ uuid];
         if (tilix.isQuake) {
-            envv ~= ["TILIX_QUAKE=1"];
+            envv ~= ["TTYX_QUAKE=1", "TILIX_QUAKE=1"];
         }
         foreach (arg; args)
             trace("Argument: " ~ arg);

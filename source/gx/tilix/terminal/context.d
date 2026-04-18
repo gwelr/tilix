@@ -31,7 +31,7 @@ interface ITerminalContext {
     /// The VTE terminal widget
     @property ExtendedVTE contextVte();
 
-    /// Global application settings (com.gexperts.Tilix)
+    /// Global application settings (io.github.gwelr.ttyx)
     @property GSettings contextGsSettings();
 
     /// Per-profile settings

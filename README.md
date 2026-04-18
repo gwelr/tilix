@@ -99,6 +99,36 @@ meson test -C builddir --print-errorlogs
 dub build --build=release --compiler=ldc2
 ```
 
+## Migrating from Tilix
+
+ttyx_ automatically migrates your configuration on first run:
+
+- **Session files**: `~/.config/tilix/` is copied to `~/.config/ttyx/` (the original is kept as backup)
+- **Saved passwords**: existing passwords stored under the old Tilix schema are read automatically; new passwords are saved under the ttyx schema
+- **Environment variable**: `TILIX_ID` is still set for backwards compatibility alongside the new `TTYX_ID`
+- **GSettings**: ttyx_ uses its own schema (`io.github.gwelr.ttyx`). Tilix settings are not migrated — configure preferences in ttyx_ directly
+
+After verifying ttyx_ works correctly, you can remove `~/.config/tilix/` manually.
+
+## Troubleshooting
+
+### App icon shows as a broken placeholder
+
+This typically means a stale icon cache from a previous install (often Flatpak). Clear the user-level cache and let GTK regenerate it:
+
+```bash
+rm -f ~/.local/share/flatpak/exports/share/icons/hicolor/icon-theme.cache
+gtk-update-icon-cache -f ~/.local/share/flatpak/exports/share/icons/hicolor/
+```
+
+Then relaunch ttyx_.
+
+### Quake mode doesn't position correctly (Wayland)
+
+Quake mode relies on X11 window positioning APIs that Wayland compositors don't expose to applications. On Wayland, behavior is compositor-dependent — GNOME Shell in particular cannot position windows from the application side.
+
+**Workaround**: use ttyx_ under an X11 session if you need Quake mode. On wlroots-based compositors (Sway, Hyprland), support may be added in a future release via the `wlr-layer-shell` protocol.
+
 ## Contributing
 
 This is a freetime project. I work on what interests me, when I have time.

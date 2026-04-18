@@ -165,13 +165,18 @@ int findSchemeByColors(ColorScheme[] schemes, ColorScheme scheme) {
 }
 
 /**
- * Loads the color schemes from disk
+ * Loads the color schemes from disk.
  *
- * TODO: Cull duplicates
+ * Paths are scanned user-first so user customizations win over system
+ * defaults when a scheme with the same filename exists in both. Duplicate
+ * filenames across paths are deduplicated; only the first occurrence is
+ * loaded.
  */
 ColorScheme[] loadColorSchemes() {
     ColorScheme[] schemes;
-    string[] paths = Util.getSystemDataDirs() ~ Util.getUserConfigDir();
+    bool[string] seenFilenames;
+    // User config dir takes precedence over system data dirs
+    string[] paths = Util.getUserConfigDir() ~ Util.getSystemDataDirs();
     foreach (path; paths) {
         auto fullpath = buildPath(path, APPLICATION_CONFIG_FOLDER, SCHEMES_FOLDER);
         trace("Loading color schemes from " ~ fullpath);
@@ -180,6 +185,12 @@ ColorScheme[] loadColorSchemes() {
             if (entry.isDir()) {
                 auto files = dirEntries(fullpath, SpanMode.shallow).filter!(f => f.name.endsWith(".json"));
                 foreach (string name; files) {
+                    string basename = std.path.baseName(name);
+                    if (basename in seenFilenames) {
+                        trace("Skipping duplicate color scheme " ~ name ~ " (already loaded from user config)");
+                        continue;
+                    }
+                    seenFilenames[basename] = true;
                     trace("Loading color scheme " ~ name);
                     try {
                         schemes ~= loadScheme(name);
@@ -332,7 +343,7 @@ private string buildTestSchemeJson(
 private ColorScheme loadSchemeFromString(string json) {
     import std.file : write, remove, tempDir;
     import std.path : buildPath;
-    string tmpFile = buildPath(tempDir(), "tilix_test_scheme.json");
+    string tmpFile = buildPath(tempDir(), "ttyx_test_scheme.json");
     write(tmpFile, json);
     scope(exit) remove(tmpFile);
     return loadScheme(tmpFile);

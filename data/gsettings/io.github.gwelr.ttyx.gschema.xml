@@ -169,8 +169,8 @@
     </key>
     <key name="window-style" enum="com.gexperts.Window.Style">
       <default>'normal'</default>
-      <summary>Style to use for displaying the tilix window</summary>
-      <description>The style to use for displaying the tilix window, enables disabling Client-Side_Decorations.</description>
+      <summary>Style to use for displaying the ttyx window</summary>
+      <description>The style to use for displaying the ttyx window, enables disabling Client-Side_Decorations.</description>
     </key>
     <key name="app-title" type="s">
       <default>'${appName}: ${sessionName}'</default>
@@ -245,7 +245,7 @@
     <!-- Second Instance Options -->
     <key name="new-instance-mode" enum="io.github.gwelr.ttyx.NewInstance.Mode">
         <default>'new-window'</default>
-        <summary>Default behavior when opening a second instance of Tilix</summary>
+        <summary>Default behavior when opening a second instance of ttyx</summary>
     </key>
     <!-- Notification Options -->
     <key name="notify-on-process-complete" type="b">
@@ -384,7 +384,7 @@
     <key name="background-image-mode" enum="io.github.gwelr.ttyx.Background.Image.Mode">
       <default>'scale'</default>
       <summary>The mode to use when rendering the background image</summary>
-      <description>Whether the background image is rendered scaled, tiled or centered in Tilix.</description>
+      <description>Whether the background image is rendered scaled, tiled or centered in ttyx.</description>
     </key>
     <key name="background-image-scale" enum="io.github.gwelr.ttyx.Background.Image.Scale">
       <default>'bilinear'</default>
@@ -957,7 +957,7 @@
 
   <!-- Keybinding settings -->
   <!--
-    Note that key names match to action names used by Tilix. Since
+    Note that key names match to action names used by ttyx. Since
     GSettings doesn't allow the '.' in key names, the action name is divided
     between the prefix and id using the hyphen. The first hyphen is treated as
     the separator, subsequent hyphens are treated as part of the action id.
@@ -1309,7 +1309,7 @@
       <default>'&lt;Ctrl&gt;&lt;Alt&gt;m'</default>
       <summary>Keyboard shortcut to toggle margin display</summary>
     </key>
-    <!-- Nautilus Shortcut for Open in Tilix -->
+    <!-- Nautilus Shortcut for Open in ttyx -->
     <key name="nautilus-open" type="s">
       <default>'&lt;Ctrl&gt;&lt;Alt&gt;t'</default>
       <summary>Keyboard shortcut used in Nautilus for Open Here extension</summary>
