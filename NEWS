@@ -1,3 +1,32 @@
+Version 1.1.1
+~~~~~~~~~~~~~~
+Released: 2026-04-18
+
+Features:
+ * Automatic config migration from Tilix — on first run, ~/.config/tilix/ is
+   copied to ~/.config/ttyx/ with the original kept as backup
+ * Password manager reads legacy com.gexperts.tilix.Password schema for
+   backwards compatibility; new passwords are saved under the ttyx schema
+ * TTYX_ID environment variable set in shells alongside TILIX_ID for
+   backwards compatibility with existing shell integrations
+
+Bugfixes:
+ * Color scheme loader no longer shows duplicates; user config now wins
+   over system defaults when a scheme filename exists in both
+ * Post-install script writes a minimal index.theme at the install prefix
+   so gtk-update-icon-cache can generate a valid icon cache
+ * AppStream metadata no longer includes stale Tilix release entries
+
+Miscellaneous:
+ * Rename user-visible Tilix references: Nautilus menu, shortcuts window,
+   GSettings descriptions, icon filenames, log and temp paths
+ * Rewrite man page under ttyx_ identity; drop 30 stale translations that
+   referenced Tilix-branded msgids
+ * Release process simplified: drop hand-assembled binary tarball, ship
+   only Flatpak bundle with signed checksums
+ * Add Troubleshooting section to README (stale icon cache, Wayland Quake)
+ * Add ROADMAP.md documenting vision and phase plan
+
 Version 1.1.0
 ~~~~~~~~~~~~~~
 Released: 2026-04-15
