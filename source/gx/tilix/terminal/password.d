@@ -6,6 +6,7 @@
  module gx.tilix.terminal.password;
 
 import std.algorithm;
+import std.array;
 import std.conv;
 import std.experimental.logger;
 import std.process;
@@ -51,10 +52,50 @@ import secret.Secret;
 import secret.Service;
 import secret.Value;
 
+import gx.gtk.dialog: showErrorDialog;
 import gx.gtk.util;
 import gx.i18n.l10n;
 
 import gx.tilix.preferences;
+
+// Pure helper — isolated from GTK/libsecret so the array mutation is unit-testable.
+package string[][] removeRowById(string[][] rows, string id) {
+    foreach (i, row; rows) {
+        if (row.length >= 2 && row[1] == id) {
+            return rows[0 .. i] ~ rows[i + 1 .. $];
+        }
+    }
+    return rows;
+}
+
+unittest {
+    string[][] rows = [["alice", "id-1"], ["bob", "id-2"], ["carol", "id-3"]];
+    assert(removeRowById(rows, "id-2") == [["alice", "id-1"], ["carol", "id-3"]]);
+}
+
+unittest {
+    string[][] rows = [["alice", "id-1"], ["bob", "id-2"]];
+    assert(removeRowById(rows, "id-1") == [["bob", "id-2"]]);
+    assert(removeRowById(rows, "id-2") == [["alice", "id-1"]]);
+}
+
+unittest {
+    string[][] rows = [["only", "id-1"]];
+    assert(removeRowById(rows, "id-1") == []);
+}
+
+unittest {
+    string[][] rows = [["alice", "id-1"]];
+    assert(removeRowById(rows, "missing") == rows);
+    string[][] empty;
+    assert(removeRowById(empty, "id-1") == empty);
+}
+
+unittest {
+    // Only the first match is removed (guards the contract; UUIDs make duplicates vanishingly unlikely in practice).
+    string[][] rows = [["a", "dup"], ["b", "dup"], ["c", "other"]];
+    assert(removeRowById(rows, "dup") == [["b", "dup"], ["c", "other"]]);
+}
 
 class PasswordManagerDialog: Dialog {
 
@@ -162,7 +203,7 @@ private:
         Button btnNew = new Button(_("New"));
         btnNew.addOnClicked(delegate(Button) {
             PasswordDialog pd = new PasswordDialog(this);
-            scope (exit) {pd.destroy();}
+            scope (exit) {pd.clearSensitiveFields(); pd.destroy();}
             pd.showAll();
             if (pd.run() == ResponseType.OK) {
                 SecretSchema* ss = schema.getSchemaStruct();
@@ -188,7 +229,7 @@ private:
             if (selected) {
                 string id = ls.getValueString(selected, COLUMN_ID);
                 PasswordDialog pd = new PasswordDialog(this, ls.getValueString(selected, COLUMN_NAME), "");
-                scope(exit) {pd.destroy();}
+                scope(exit) {pd.clearSensitiveFields(); pd.destroy();}
                 pd.showAll();
                 if (pd.run() == ResponseType.OK) {
                     ListG list = collection.getItems();
@@ -214,19 +255,38 @@ private:
         Button btnDelete = new Button(_("Delete"));
         btnDelete.addOnClicked(delegate(Button) {
             TreeIter selected = tv.getSelectedIter();
-            if (selected) {
-                string id = ls.getValueString(selected, COLUMN_ID);
-                HashTable ht = createHashTable();
-                immutable(char*) idz = toStringz(id);
-                ht.insert(cast(void*)attrID, cast(void*)idz);
-                Secret.passwordClearvSync(schema, ht, null);
-                foreach(index, row; rows) {
-                    if (row[1] == id) {
-                        std.algorithm.remove(rows, index);
+            if (selected is null || collection is null) return;
+            string id = ls.getValueString(selected, COLUMN_ID);
+
+            // Iterate items rather than calling passwordClearvSync(schema,...) so both the current and legacy schemas are handled uniformly.
+            bool deleted = false;
+            try {
+                ListG list = collection.getItems();
+                if (list !is null) {
+                    foreach (item; list.toArray!Item) {
+                        string schemaName = item.getSchemaName();
+                        if (schemaName != SCHEMA_NAME && schemaName != LEGACY_SCHEMA_NAME) continue;
+                        string itemID = to!string(cast(char*)item.getAttributes().lookup(cast(void*)attrID));
+                        if (itemID == id) {
+                            if (item.deleteSync(null)) deleted = true;
+                            break;
+                        }
                     }
                 }
-                ls.remove(selected);
+            } catch (GException ge) {
+                errorf("Failed to delete password %s: %s", id, ge.msg);
+                showErrorDialog(this, _("Failed to delete password: ") ~ ge.msg, _("Delete failed"));
+                return;
             }
+
+            if (!deleted) {
+                errorf("Password entry %s not removed from keyring", id);
+                showErrorDialog(this, _("Password entry could not be deleted from the keyring."), _("Delete failed"));
+                return;
+            }
+
+            rows = removeRowById(rows, id);
+            ls.remove(selected);
         });
         bButtons.add(btnDelete);
 
@@ -512,6 +572,16 @@ public:
 
     @property string password() {
         return ePassword.getText();
+    }
+
+    // Best-effort — GTK doesn't securely zero EntryBuffer allocations, so overwriting only helps evict plaintext from the current backing store.
+    public void clearSensitiveFields() {
+        foreach (e; [ePassword, eConfirmPassword]) {
+            if (e is null) continue;
+            auto len = e.getText().length;
+            if (len > 0) e.setText(replicate(" ", len));
+            e.setText("");
+        }
     }
 
 }
