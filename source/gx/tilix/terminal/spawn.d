@@ -12,6 +12,7 @@ import std.experimental.logger;
 import std.format : format;
 import std.process : environment;
 import std.string : split, startsWith;
+import std.uri : encodeComponent;
 
 import gio.Settings : GSettings = Settings;
 
@@ -53,6 +54,49 @@ string getHostShell() {
 }
 
 /**
+ * Build an RFC-3986-conformant proxy URL.
+ *
+ * Emits `scheme://host:port/` with optional `user[:pw]@` userinfo segment.
+ * `user` and `pw` are percent-encoded so passwords containing reserved
+ * characters (`@`, `:`, `/`, spaces, etc.) do not break the URL.
+ *
+ * Extracted as a package-level pure helper so the output is unit-testable.
+ */
+package string buildProxyUrl(string urlScheme, string user, string pw, string host, int port) {
+    string value = urlScheme ~ "://";
+    if (user.length > 0) {
+        value ~= encodeComponent(user);
+        if (pw.length > 0) {
+            value ~= ":" ~ encodeComponent(pw);
+        }
+        value ~= "@";
+    }
+    value ~= format("%s:%d/", host, port);
+    return value;
+}
+
+unittest {
+    assert(buildProxyUrl("http", "", "", "proxy.local", 8080) == "http://proxy.local:8080/");
+}
+
+unittest {
+    assert(buildProxyUrl("http", "alice", "", "proxy.local", 8080) == "http://alice@proxy.local:8080/");
+    assert(buildProxyUrl("http", "alice", "secret", "proxy.local", 8080) == "http://alice:secret@proxy.local:8080/");
+}
+
+unittest {
+    // A password containing reserved userinfo characters must survive intact.
+    auto url = buildProxyUrl("http", "user@corp", "p@ss:w/rd", "proxy.local", 3128);
+    assert(url == "http://user%40corp:p%40ss%3Aw%2Frd@proxy.local:3128/");
+}
+
+unittest {
+    // socks schemes use the same construction.
+    assert(buildProxyUrl("socks", "", "", "s.example", 1080) == "socks://s.example:1080/");
+    assert(buildProxyUrl("socks", "u", "p", "s.example", 1080) == "socks://u:p@s.example:1080/");
+}
+
+/**
  * Set proxy environment variables from GNOME's proxy settings.
  *
  * Reads the system proxy configuration (http, https, ftp, socks) from
@@ -67,6 +111,19 @@ string getHostShell() {
  *   envv = Environment variable array to append proxy vars to.
  */
 void setProxyEnv(GSettings gsSettings, GSettings gsProxy, ref string[] envv) {
+
+    // GNOME only exposes use-authentication / authentication-user / -password
+    // under the http subschema. Those same credentials apply to the HTTPS
+    // proxy as well (common deployment pattern: same upstream for both).
+    string httpAuthUser;
+    string httpAuthPw;
+    if (gsProxy !is null) {
+        GSettings httpAuth = gsProxy.getChild("http");
+        if (httpAuth.getBoolean("use-authentication")) {
+            httpAuthUser = httpAuth.getString("authentication-user");
+            httpAuthPw = httpAuth.getString("authentication-password");
+        }
+    }
 
     void addProxy(GSettings proxy, string scheme, string urlScheme, string varName) {
         GSettings gsProxyScheme = proxy.getChild(scheme);
@@ -83,23 +140,14 @@ void setProxyEnv(GSettings gsSettings, GSettings gsProxy, ref string[] envv) {
             }
         }
 
-        string value = urlScheme ~ "://";
-        if (scheme == "http") {
-            if (gsProxyScheme.getBoolean("use-authentication")) {
-                string user = gsProxyScheme.getString("authentication-user");
-                string pw = gsProxyScheme.getString("authentication-password");
-                if (user.length > 0) {
-                    value = value ~ "@" ~ user;
-                    if (pw.length > 0) {
-                        value = value ~ ":" ~ pw;
-                    }
-                    value = value ~ "@";
-                }
-            }
+        string user;
+        string pw;
+        if (scheme == "http" || scheme == "https") {
+            user = httpAuthUser;
+            pw = httpAuthPw;
         }
 
-        value = value ~ format("%s:%d/", host, port);
-        envv ~= format("%s=%s", varName, value);
+        envv ~= format("%s=%s", varName, buildProxyUrl(urlScheme, user, pw, host, port));
     }
 
     if (!gsSettings.getBoolean(SETTINGS_SET_PROXY_ENV_KEY)) return;

@@ -26,9 +26,58 @@ import gx.tilix.application;
 import gx.tilix.cmdparams;
 import gx.tilix.constants;
 
+/**
+ * Resolve the file path for the debug log (only used when USE_FILE_LOGGING is on).
+ *
+ * Prefers `$XDG_RUNTIME_DIR/ttyx.log` (typically /run/user/$UID, mode 0700
+ * and owned by the user) so the log is unreadable by other local users.
+ * Falls back to `$HOME/.cache/ttyx/ttyx.log` (also created mode 0700),
+ * and only then to `/tmp/ttyx.log` as a last resort when neither is
+ * available.
+ */
+private string resolveLogPath() {
+    import std.path : buildPath;
+    import std.file : mkdirRecurse, exists, isDir, setAttributes;
+    import core.sys.posix.sys.stat : S_IRWXU;
+
+    // Tighten permissions to 0700 on every call, not just on creation —
+    // another tool may have created `~/.cache/ttyx` with looser perms.
+    string tryDir(string dir, bool enforcePerms) {
+        if (dir.length == 0) return null;
+        try {
+            if (!exists(dir)) {
+                mkdirRecurse(dir);
+            } else if (!isDir(dir)) {
+                return null;
+            }
+            if (enforcePerms) setAttributes(dir, S_IRWXU);
+            return buildPath(dir, "ttyx.log");
+        } catch (Exception) {
+            return null;
+        }
+    }
+
+    // $XDG_RUNTIME_DIR is already 0700 by systemd convention — don't
+    // touch its mode (it may host sockets we shouldn't clobber).
+    string runtime = environment.get("XDG_RUNTIME_DIR");
+    if (auto p = tryDir(runtime, /* enforcePerms */ false)) return p;
+
+    string home = environment.get("HOME");
+    if (home.length > 0) {
+        if (auto p = tryDir(buildPath(home, ".cache", "ttyx"), true)) return p;
+    }
+
+    // Last-resort fallback — world-readable directory. USE_FILE_LOGGING
+    // defaults off, so this only matters for developer/debug builds where
+    // neither XDG_RUNTIME_DIR nor HOME is resolvable.
+    return "/tmp/ttyx.log";
+}
+
 int main(string[] args) {
     static if (USE_FILE_LOGGING) {
-        sharedLog = new shared FileLogger("/tmp/ttyx.log");
+        // FileLogger's constructors aren't `shared`, so build an unshared
+        // instance and cast — sharedLog is __gshared in current Phobos.
+        sharedLog = cast(shared) new FileLogger(resolveLogPath());
     }
 
     bool newProcess = false;

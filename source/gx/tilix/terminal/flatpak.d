@@ -20,6 +20,8 @@ import glib.VariantType : GVariantType = VariantType;
 import gtkc.giotypes : GDBusConnection, GDBusCallFlags, GDBusConnectionFlags, GDBusSignalCallback, GDBusSignalFlags;
 import gtkc.glibtypes;
 
+import gx.util.redact : redactSensitive;
+
 /// Delegate type for receiving host command exit notifications.
 package alias HostCommandExitedCallback = void delegate(int);
 
@@ -54,7 +56,7 @@ GVariant buildHostCommandVariant(string workingDir, string[] args, string[] envv
         if (eqPos < 1) continue;
         string key = env[0 .. eqPos];
         string val = env[eqPos + 1 .. $];
-        tracef("Adding env var %s=%s", key, val);
+        tracef("Adding env var %s=%s", key, redactSensitive(key, val));
         auto entry = new GVariant(g_variant_new("{ss}",
             toStringz(key), toStringz(val)), true);
         envBuilder.addValue(entry);
