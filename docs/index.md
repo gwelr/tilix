@@ -37,7 +37,7 @@ Split horizontally, vertically, nest arbitrarily. Drag and drop terminals within
 
 Paste from the clipboard with review dialogs, dangerous-command detection, and auto-clear after copy. Clear visual indicators when a session is running as root or over SSH. Core-dump protection, in-memory-only scrollback, and a one-shortcut `Secure Clear` for wiping the scrollback when sensitive data has been displayed.
 
-A dedicated **Security features** page is coming; until then the [project README](https://github.com/gwelr/ttyx_#security-features) has the full list.
+See the [Security features]({{ site.baseurl }}/security/) page for the full list, configuration reference, and an explicit threat model.
 
 ### Actively maintained
 
@@ -51,6 +51,7 @@ See [**What's new vs Tilix**]({{ site.baseurl }}/whats-new/) for the full compar
 
 - [**Install**]({{ site.baseurl }}/install/) — Flatpak (recommended) and source builds (Meson / Dub).
 - [**Manual**]({{ site.baseurl }}/manual/) — topic-by-topic reference: titles, Quake mode, triggers, color schemes, profile switching, and more.
+- [**Security features**]({{ site.baseurl }}/security/) — paste / clipboard / memory protections, threat model, and configuration reference.
 - [**What's new vs Tilix**]({{ site.baseurl }}/whats-new/) — feature-level differences from upstream.
 - [**Changelog**]({{ site.baseurl }}/changelog/) — per-release notes.
 - [**Migrating from Tilix**]({{ site.baseurl }}/migrating/) — what ttyx_ does with your existing Tilix config on first run.
