@@ -43,7 +43,7 @@ A dedicated **Security features** page is coming; until then the [project README
 
 ttyx_ ships bug fixes (crash on malformed OSC 7 URIs, preferences-dialog segfaults, proxy URL construction, focus stealing on terminal restart, …), new color schemes, release-build optimizations, and a growing test suite. Contributions welcome via pull request; the issue tracker is actually read.
 
-A **What's new vs Tilix** page is in progress; the README has the [full change list](https://github.com/gwelr/ttyx_#whats-new-since-tilix) in the meantime.
+See [**What's new vs Tilix**]({{ site.baseurl }}/whats-new/) for the full comparison and the [**changelog**]({{ site.baseurl }}/changelog/) for per-release notes.
 
 ---
 
@@ -51,6 +51,8 @@ A **What's new vs Tilix** page is in progress; the README has the [full change l
 
 - [**Installation**](https://github.com/gwelr/ttyx_#building) — Debian/Ubuntu dependencies, Meson and Dub build options.
 - [**Manual**]({{ site.baseurl }}/manual/) — topic-by-topic reference: titles, Quake mode, triggers, color schemes, profile switching, and more.
+- [**What's new vs Tilix**]({{ site.baseurl }}/whats-new/) — feature-level differences from upstream.
+- [**Changelog**]({{ site.baseurl }}/changelog/) — per-release notes.
 - [**Migrating from Tilix**](https://github.com/gwelr/ttyx_#migrating-from-tilix) — what ttyx_ does with your existing Tilix config on first run.
 - [**Report an issue**](https://github.com/gwelr/ttyx_/issues) — bug reports and feature requests.
 
