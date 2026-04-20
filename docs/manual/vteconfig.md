@@ -55,4 +55,4 @@ PROMPT_COMMAND=custom_prompt
 
 Enable the option in your ttyx_ Profile (under Preferences) to use a login shell, the screenshot below shows the option that needs to be checked.
 
-![Profile - Command](https://gnunn1.github.io/tilix-web/assets/images/manual/tilix_login_shell.png)
+![Profile - Command]({{ site.baseurl }}/assets/images/manual/login_shell_preference.png)
