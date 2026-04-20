@@ -21,6 +21,8 @@ import gx.tilix.common;
 import gx.tilix.constants;
 import gx.tilix.terminal.activeprocess;
 
+import gx.util.proc : checkProcessTreeForRoot, isSSHProcess;
+
 import gx.tilix.application;
 
 enum MonitorEventType {
@@ -151,60 +153,6 @@ enum SLEEP_CONSTANT_MS = 300;
  */
 shared ProcessStatus[GPid] processes;
 
-/**
- * Walk up the process tree from the given PID, checking if any
- * process has effective UID 0 (root). Stops at init (pid 1) or
- * when the process no longer exists.
- */
-bool checkProcessTreeForRoot(pid_t startPid) {
-    import std.conv : to;
-    import std.file : read, exists;
-    import std.format : format;
-    import std.string : splitLines, startsWith, split;
-
-    pid_t currentPid = startPid;
-    for (int depth = 0; depth < 10; depth++) {
-        if (currentPid <= 1) break;
-        auto path = format("/proc/%d/status", currentPid);
-        if (!exists(path)) break;
-        try {
-            string data = to!string(cast(char[]) read(path));
-            pid_t ppid = 0;
-            foreach (line; data.splitLines()) {
-                if (line.startsWith("Uid:")) {
-                    auto fields = line.split();
-                    if (fields.length >= 3 && fields[2] == "0") {
-                        return true;
-                    }
-                }
-                if (line.startsWith("PPid:")) {
-                    auto fields = line.split();
-                    if (fields.length >= 2) {
-                        ppid = to!pid_t(fields[1]);
-                    }
-                }
-            }
-            currentPid = ppid;
-        } catch (Exception e) {
-            break;
-        }
-    }
-    return false;
-}
-
-/**
- * SSH-related process names that indicate a remote connection.
- */
-immutable string[] SSH_PROCESS_NAMES = ["ssh", "scp", "sftp", "mosh", "sshfs"];
-
-/**
- * Returns true if the given process name indicates an SSH session.
- */
-bool isSSHProcess(string name) {
-    import std.algorithm : canFind;
-    return SSH_PROCESS_NAMES.canFind(name);
-}
-
 void monitorProcesses(int sleep, Tid tid) {
     bool abort = false;
     while (!abort) {
@@ -261,23 +209,6 @@ shared class ProcessStatus {
 }
 
 // -- Unit tests --
-
-unittest {
-    // SSH process detection
-    assert(isSSHProcess("ssh"));
-    assert(isSSHProcess("scp"));
-    assert(isSSHProcess("sftp"));
-    assert(isSSHProcess("mosh"));
-    assert(isSSHProcess("sshfs"));
-
-    // Non-SSH processes
-    assert(!isSSHProcess("bash"));
-    assert(!isSSHProcess("vim"));
-    assert(!isSSHProcess("sudo"));
-    assert(!isSSHProcess("sshd"));  // daemon, not client
-    assert(!isSSHProcess("ssh-agent"));
-    assert(!isSSHProcess(""));
-}
 
 unittest {
     // ProcessInfo struct construction

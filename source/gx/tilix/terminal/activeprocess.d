@@ -11,6 +11,8 @@ import std.file;
 import std.path;
 import std.string;
 
+import gx.util.proc : readProcStatus;
+
 
 /**
 * A stripped-down (plus extended) version of psutil's Process class.
@@ -36,26 +38,9 @@ class Process {
         return to!pid_t(processStat[2]);
     }
 
-    /**
-     * Returns true if the process is running as root (effective UID == 0).
-     * Reads the Uid line from /proc/[PID]/status which has the format:
-     * Uid: real effective saved filesystem
-     */
+    /// True if the process has effective UID 0 (root).
     bool isRoot() {
-        try {
-            string data = to!string(cast(char[]) read(format("/proc/%d/status", pid)));
-            foreach (line; data.splitLines()) {
-                if (line.startsWith("Uid:")) {
-                    auto fields = line.split();
-                    if (fields.length >= 3) {
-                        return fields[2] == "0"; // effective UID
-                    }
-                }
-            }
-        } catch (FileException fe) {
-            // Process may have exited
-        }
-        return false;
+        return readProcStatus(pid).uid == 0;
     }
 
     string[] parseStatFile() {
@@ -272,4 +257,11 @@ unittest {
     auto info = ForegroundProcessInfo.init;
     assert(!info.isValid());
     assert(info.pid == -1);
+}
+
+unittest {
+    // Process.isRoot delegates to gx.util.proc.readProcStatus; verify
+    // the wiring against init (pid 1), which always runs as root.
+    auto p = new Process(1);
+    assert(p.isRoot());
 }

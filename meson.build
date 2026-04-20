@@ -93,6 +93,7 @@ tilix_sources = [
     'source/gx/util/array.d',
     'source/gx/util/geometry.d',
     'source/gx/util/path.d',
+    'source/gx/util/proc.d',
     'source/gx/util/redact.d',
     'source/gx/util/string.d',
     'source/secret/Collection.d',
