@@ -20,7 +20,7 @@ ttyx_ is an actively maintained fork of [Tilix](https://github.com/gnunn1/tilix)
 {: .text-center }
 
 <div style="text-align: center; margin: 2rem 0;">
-  <a href="https://github.com/gwelr/ttyx_#building" class="btn btn-primary fs-5 mr-2">Install</a>
+  <a href="{{ site.baseurl }}/install/" class="btn btn-primary fs-5 mr-2">Install</a>
   <a href="{{ site.baseurl }}/manual/" class="btn fs-5 mr-2">Read the manual</a>
   <a href="https://github.com/gwelr/ttyx_" class="btn fs-5">View on GitHub</a>
 </div>
@@ -49,11 +49,11 @@ See [**What's new vs Tilix**]({{ site.baseurl }}/whats-new/) for the full compar
 
 ## Where to next
 
-- [**Installation**](https://github.com/gwelr/ttyx_#building) — Debian/Ubuntu dependencies, Meson and Dub build options.
+- [**Install**]({{ site.baseurl }}/install/) — Flatpak (recommended) and source builds (Meson / Dub).
 - [**Manual**]({{ site.baseurl }}/manual/) — topic-by-topic reference: titles, Quake mode, triggers, color schemes, profile switching, and more.
 - [**What's new vs Tilix**]({{ site.baseurl }}/whats-new/) — feature-level differences from upstream.
 - [**Changelog**]({{ site.baseurl }}/changelog/) — per-release notes.
-- [**Migrating from Tilix**](https://github.com/gwelr/ttyx_#migrating-from-tilix) — what ttyx_ does with your existing Tilix config on first run.
+- [**Migrating from Tilix**]({{ site.baseurl }}/migrating/) — what ttyx_ does with your existing Tilix config on first run.
 - [**Report an issue**](https://github.com/gwelr/ttyx_/issues) — bug reports and feature requests.
 
 ---
