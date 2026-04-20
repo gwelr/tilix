@@ -56,3 +56,84 @@ unittest {
     // Then: has comma and "" → wrapped: "a,""b"""
     assert(result == "\"a,\"\"b\"\"\"");
 }
+
+/**
+ * Parse a `pairSep`-delimited string of `kvSep`-separated key=value
+ * pairs into a map. Whitespace around keys and values is trimmed.
+ * Chunks without a `kvSep` are silently skipped. Duplicate keys: the
+ * last occurrence wins.
+ *
+ * Example: `parsePairs("a=1;b=2")` → `["a": "1", "b": "2"]`.
+ */
+string[string] parsePairs(string input, string pairSep = ";", string kvSep = "=") {
+    string[string] result;
+    if (input.length == 0) return result;
+    foreach (chunk; input.split(pairSep)) {
+        auto idx = chunk.indexOf(kvSep);
+        if (idx < 0) continue;
+        string key = chunk[0 .. idx].strip();
+        string value = chunk[idx + kvSep.length .. $].strip();
+        result[key] = value;
+    }
+    return result;
+}
+
+/// Test: single and multiple pairs, default separators.
+unittest {
+    auto m = parsePairs("a=1");
+    assert(m.length == 1 && m["a"] == "1");
+
+    m = parsePairs("a=1;b=2;c=3");
+    assert(m.length == 3);
+    assert(m["a"] == "1" && m["b"] == "2" && m["c"] == "3");
+}
+
+/// Test: whitespace around keys and values is trimmed.
+unittest {
+    auto m = parsePairs("  a  = 1 ; b=  foo bar  ");
+    assert(m["a"] == "1");
+    assert(m["b"] == "foo bar"); // internal whitespace preserved
+}
+
+/// Test: chunks without a kvSep are skipped silently.
+unittest {
+    auto m = parsePairs("a=1;broken;b=2");
+    assert(m.length == 2);
+    assert(m["a"] == "1" && m["b"] == "2");
+}
+
+/// Test: empty input and degenerate shapes.
+unittest {
+    assert(parsePairs("").length == 0);
+    assert(parsePairs(";;;").length == 0);
+    auto m = parsePairs("=value");  // empty key retained
+    assert(m.length == 1 && m[""] == "value");
+    m = parsePairs("key=");         // empty value retained
+    assert(m.length == 1 && m["key"] == "");
+}
+
+/// Test: trailing/leading separator is tolerated.
+unittest {
+    auto m = parsePairs(";a=1;b=2;");
+    assert(m.length == 2);
+    assert(m["a"] == "1" && m["b"] == "2");
+}
+
+/// Test: duplicate keys — last wins.
+unittest {
+    auto m = parsePairs("a=1;a=2;a=3");
+    assert(m["a"] == "3");
+}
+
+/// Test: the value may itself contain `=`; only the first separator splits.
+unittest {
+    auto m = parsePairs("url=http://x.example/?q=1&r=2");
+    assert(m["url"] == "http://x.example/?q=1&r=2");
+}
+
+/// Test: custom separators (non-default).
+unittest {
+    auto m = parsePairs("a:1,b:2,c:3", ",", ":");
+    assert(m.length == 3);
+    assert(m["a"] == "1" && m["b"] == "2" && m["c"] == "3");
+}

@@ -130,6 +130,7 @@ import gx.gtk.vte;
 import gx.i18n.l10n;
 import gx.util.array;
 import gx.util.redact : stripUrlUserinfo;
+import gx.util.string : parsePairs;
 
 import gx.tilix.application;
 import gx.tilix.bookmark.bmchooser;
@@ -1604,23 +1605,12 @@ private:
      */
     void processTrigger(TerminalTrigger trigger, string[] groups) {
 
-        string[string] getParameters(string triggerParameters) {
-            string[string] result;
-            foreach (parameter; split(replaceMatchTokens(triggerParameters, groups), ";")) {
-                string[] pair = split(parameter, "=");
-                if (pair.length == 2) {
-                    result[pair[0].strip()] = pair[1].strip();
-                }
-            }
-            return result;
-        }
-
         // replace various variable tokens in parameters, i.e. ${rows}, ${title}, etc
         trigger.parameters = replaceVariables(trigger.parameters);
 
         final switch (trigger.action) {
             case TriggerAction.UPDATE_STATE:
-                string[string] parameters = getParameters(trigger.parameters);
+                string[string] parameters = parsePairs(replaceMatchTokens(trigger.parameters, groups));
                 bool update = false;
                 foreach (variable; EnumMembers!(GlobalTerminalState.StateVariable)) {
                     if (variable in parameters) {
@@ -1638,7 +1628,7 @@ private:
                 spawnShell(replaceMatchTokens(trigger.parameters, groups));
                 break;
             case TriggerAction.SEND_NOTIFICATION:
-                string[string] parameters = getParameters(trigger.parameters);
+                string[string] parameters = parsePairs(replaceMatchTokens(trigger.parameters, groups));
                 tracef("Parameters count: %d", parameters.length);
                 string title = _("ttyx_ Custom Notification");
                 string _body;
