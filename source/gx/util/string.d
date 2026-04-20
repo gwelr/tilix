@@ -137,3 +137,20 @@ unittest {
     assert(m.length == 3);
     assert(m["a"] == "1" && m["b"] == "2" && m["c"] == "3");
 }
+
+/// Test: multi-character separators (verifies kvSep.length is used, not +1).
+unittest {
+    auto m = parsePairs("a => 1 || b => 2", "||", "=>");
+    assert(m.length == 2);
+    assert(m["a"] == "1" && m["b"] == "2");
+}
+
+/// Test: regression anchor — the old nested getParameters used
+/// `pair.length == 2` after split("="), which dropped any input
+/// containing two or more `=` characters. parsePairs preserves such
+/// inputs by splitting at the first kvSep only.
+unittest {
+    auto m = parsePairs("a==b");
+    assert(m.length == 1);
+    assert(m["a"] == "=b");
+}

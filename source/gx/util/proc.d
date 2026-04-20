@@ -108,10 +108,11 @@ unittest {
 }
 
 unittest {
-    // Init (pid 1) always runs as root on Linux.
+    // Init (pid 1) always runs as root on Linux and has no parent.
     auto s = readProcStatus(1);
     assert(s.isValid());
     assert(s.uid == 0);
+    assert(s.ppid == 0);
 }
 
 unittest {

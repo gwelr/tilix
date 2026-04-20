@@ -258,3 +258,10 @@ unittest {
     assert(!info.isValid());
     assert(info.pid == -1);
 }
+
+unittest {
+    // Process.isRoot delegates to gx.util.proc.readProcStatus; verify
+    // the wiring against init (pid 1), which always runs as root.
+    auto p = new Process(1);
+    assert(p.isRoot());
+}
