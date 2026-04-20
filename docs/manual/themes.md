@@ -5,7 +5,9 @@ nav_order: 4
 layout: default
 ---
 
-ttyx_ supports themes for configuring the color scheme of the terminal, each theme is stored in a file. A theme file is a simple json file that specifies the color for each element as well as identifying whether certain colors should be used or defaulted. Here is an example of a theme file:
+## Overview
+
+ttyx_ supports themes for configuring the color scheme of the terminal, one theme per JSON file. Each theme specifies colors for each element and declares whether certain colors should be used or left to the GTK theme. Here is an example of a theme file:
 
 {% highlight json %}
 {
@@ -43,6 +45,37 @@ ttyx_ supports themes for configuring the color scheme of the terminal, each the
 }
 {% endhighlight %}
 
-Themes are loaded from one of two places by ttyx_. The first is ```/usr/share/ttyx/schemes```, these are the themes that are shipped with ttyx_. The second place that ttyx_ looks for theme files is in the user home directory, specifically ```~/.config/ttyx/schemes```. Users can place any custom themes they want to use here.
+## Where themes are loaded from
 
-While ttyx_ only includes a small number of themes, additional themes can be easily downloaded and installed. Community theme repositories originally built for Tilix use a compatible JSON format, for example [Tilix-Themes](https://github.com/storm119/Tilix-Themes) and [gogh-to-tilix](https://github.com/isacikgoz/gogh-to-tilix).
+ttyx_ looks for theme files in two locations, in order:
+
+1. `~/.config/ttyx/schemes/` — user-installed themes. Drop any JSON file here and it will appear in the theme picker.
+2. `/usr/share/ttyx/schemes/` — themes shipped with ttyx_.
+
+If a theme with the same name exists in both locations, the user version wins. This fix shipped in v1.1.1; before then, duplicates could appear in the theme picker.
+
+## Bundled themes
+
+ttyx_ ships 17 schemes out of the box, covering the most commonly-requested palettes:
+
+- **Catppuccin** — Latte, Mocha
+- **Dracula**
+- **Gruvbox** — Dark, Light
+- **Nord**
+- **Solarized** — Dark, Light
+- **Tokyo Night**
+- **One Dark**
+- **Material**
+- **Monokai**
+- **Tango**
+- **Base16 Twilight (dark)**
+- **Linux console**, **Orchis**, **Yaru**
+
+## Installing additional themes
+
+Any JSON file following the structure above works. Two community theme repositories originally built for Tilix use the same format and install into `~/.config/ttyx/schemes/`:
+
+- [**Tilix-Themes**](https://github.com/storm119/Tilix-Themes) — a large collection of pre-built palettes.
+- [**gogh-to-tilix**](https://github.com/isacikgoz/gogh-to-tilix) — a converter for the [gogh](https://github.com/Gogh-Co/Gogh) theme ecosystem.
+
+After dropping a new `.json` file into `~/.config/ttyx/schemes/`, it appears in **Preferences → Profile → Color → Color scheme** without a restart.

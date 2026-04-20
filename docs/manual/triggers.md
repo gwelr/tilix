@@ -7,47 +7,47 @@ layout: default
 
 *Historically, trigger support required a [Tilix-specific patch](https://github.com/gnunn1/tilix/blob/master/experimental/vte/alternate-screen.patch) on top of GTK VTE (Arch users installed the [vte3-tilix-git](https://aur.archlinux.org/packages/vte3-tilix-git) package). Recent VTE releases include the alternate-screen support needed for triggers to work without a custom patch.*
 
-#### Introduction
+## Overview
 
-ttyx_ supports the concept of triggers, these are regular expressions defined by the user that when matched against text output by the terminal trigger an action. A trigger consists of a regular expression, the action to execute and a parameter string. Depending on the action, the parameter may not be used at all, may be a single string or a semi-colon delimited list of variables.
+ttyx_ supports triggers: regular expressions defined by the user that, when matched against text output by the terminal, execute an action. A trigger consists of a regular expression, the action to execute, and a parameter string. Depending on the action, the parameter may not be used at all, may be a single string, or may be a semicolon-delimited list of `name=value` pairs.
 
-The result of the regular expression can be referenced as tokens in the parameter, ttyx_ will substitute the tokens in the parameter prior to executing the action. The token $0 refers to the complete regular expression match. If groups were defined in the regular expression, the tokens $1, $2, $3, etc refer to the individual group captures.
+Capture groups in the regular expression are available as tokens in the parameter. ttyx_ substitutes these tokens before executing the action:
 
-#### Supported Actions
+- `$0` — the complete regular expression match.
+- `$1`, `$2`, `$3`, … — the individual capture groups when defined.
 
-The following actions are supported by ttyx_:
+## Supported actions
 
-Action | Description
--------|------------
-Update State | This action updates the state that ttyx_ maintains about the terminal in terms of things like what directory or hostname is currently active in the terminal. The variables *username*, *hostname* and *directory* can be used to update the state respectively, these represent . See further below for an example of how to use this.
-Execute Command | This action executes the command provided in the parameter field.
-Send Notification | Sends a notification to the desktop environment. Two variables are supported by this action, *title* and *body*.
-Update Title | Updates the terminal title using the parameter field, it sets the override title specified in Layout Options.
-Play Bell | Plays the bell noise, this action takes no parameters
-Send Text | Sends the text in the parameter field to the terminal
-Insert Password | Shows the password manager to enable a password to be inserted into the terminal
+| Action | Parameter | Description |
+|--------|-----------|-------------|
+| Update State | `username=…;hostname=…;directory=…` | Updates the internal state ttyx_ keeps about the terminal. Used by features like titles, the path-aware working directory, and profile switching. Any subset of `username`, `hostname`, `directory` may be provided. |
+| Execute Command | shell command | Spawns the given command in the shell. |
+| Send Notification | `title=…;body=…` | Sends a desktop notification. Both keys are optional; if `body` is omitted, the full regex match (`$0`) is used as the body. |
+| Update Badge | text | Sets the terminal's badge overlay to the substituted text. See [Badges]({{ site.baseurl }}/manual/badges/). |
+| Update Title | text | Sets the terminal's override title (same as the Layout Options override). |
+| Play Bell | — | Plays the terminal bell. No parameter. |
+| Send Text | text | Sends the substituted text to the terminal as if typed. |
+| Insert Password | — | Opens the password manager so you can pick an entry to insert. |
+| Run Process | command | Runs the given command outside the terminal (detached), without sending any output back to the shell. |
 
-#### Options
+## Trigger-line limit
 
-ttyx_ has an option to limit the number of lines that are checked for triggers, this is intended to improve performance on slower hardware. Every time a change happens in the terminal, this is reported to ttyx_ as a block of text. This block might consist of just a single character when the user is typing, or it might consist of several thousand lines when outputting a large text file via cat.
+ttyx_ limits the number of lines checked for triggers by default. This keeps performance steady on slower hardware when a large block of output arrives (e.g. `cat` on a big file).
 
-In the later scenario, we may generally not be too interested in checking for triggers in all lines of text. When this option is active, ttyx_ will only check the lines changed from the end of the text. So for example, if a block of text consisting of 20,000 lines of text was received but the option limit was active at 256, only the last 256 lines would be checked.
+Every change in the terminal is delivered to ttyx_ as a block of text. A block might be a single keystroke, or it might be thousands of lines at once. When the trigger-line limit is active, only the last N lines of each block are scanned; so if a 20,000-line block arrives and the limit is 256, only the trailing 256 lines get trigger-matched.
 
-#### Examples
+If you need triggers to fire on every line regardless of block size, disable the limit from Preferences. Doing so can have a noticeable performance cost during bulk output.
 
-Here are some examples to help you use this feature:
+## Example
 
-Regular Expression | Action | Parameter | Description
--------------------|--------|-----------|------------
-```^\[(?P&lt;user>.*)@(?P&lt;host>[-a-zA-Z0-9]*)``` | Update State | username=$1;hostname=$2 | Parses the username and hostname from a Linux prompt command that uses the following format: *[username@hostname directory]$*
+| Regular expression | Action | Parameter | Description |
+|-------------------|--------|-----------|-------------|
+| `^\[(?P<user>.*)@(?P<host>[-a-zA-Z0-9]*)` | Update State | `username=$1;hostname=$2` | Parses the username and hostname from a Linux prompt formatted as `[user@host directory]$`. |
 
-#### How It Works
+## How it works
 
-To get the most of out of this feature, it's important to understand how this works under the hood. As an overview, ttyx_ uses a GTK component called the VTE to perform the actual terminal emulation. When changes occur in the VTE, it triggers an event to notify ttyx_ but does not include any information about the change itself. In order to execute triggers, ttyx_ saves the current row and column reported by the VTE so that when the next change event happens only the delta is processed for triggers.
+ttyx_ relies on GTK's VTE component to perform the actual terminal emulation. When VTE's buffer changes, it signals ttyx_ but does not include information about what changed. ttyx_ records the current row/column position on each signal so that it can compute the delta the next time a change arrives, and runs triggers only against that delta.
 
-This means that any change in the terminal will be processed but the grouping of these changes is entirely up to the VTE. For example, when typing text ttyx_ will run triggers against each character entered by the user individually, it does not run triggers against the full command. 
+One consequence: the **grouping of changes is entirely up to VTE**. When typing, VTE signals after each character, so triggers run against individual characters, not full commands. When outputting large amounts of text (e.g. `cat`-ing a large file), VTE batches changes in very large chunks — this keeps framerate stable by coalescing updates. If the scrollback buffer overflows during one of these bursts, the overflowing text has already scrolled out of range and is no longer matchable.
 
-When outputting large amounts of text, i.e. cat'ing a large file, the VTE tends to report changes in very large chunks. This makes perfect sense the VTE needs to maintain a certain level of performance and caps the framerate by omitting rendering of text when it is not needed. As a result, when the scrollback buffer is limited (default in ttyx_ is 8192), not all of the text may be available to ttyx_ since it has already scrolled out of range of the buffer.
-
-Thus if you want ttyx_ to process triggers for every line of text, you must set the scrollback buffer to unlimited and the trigger lines option to unlimited.
-
+To maximize trigger coverage on large output: raise the scrollback buffer (`scrollback-lines`, maximum 999,999 in ttyx_) and disable the trigger-line limit. The unlimited-scrollback option from upstream Tilix was removed for [memory-safety reasons]({{ site.baseurl }}/security/#in-memory-only-scrollback), so 999,999 is the current ceiling.
