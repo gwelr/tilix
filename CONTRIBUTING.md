@@ -63,6 +63,8 @@ Or use the bundled wrapper `debug-ttyx.sh`, which does all of the above plus lau
 
 ttyx_ is a GTK single-instance application (via D-Bus activation), so the wrapper kills any running `ttyx` before launching under gdb — otherwise the new process would hand off to the existing one and gdb would attach to nothing.
 
+**Gotcha — `ttyx -a <action>` doesn't work against a `debug-ttyx.sh` instance.** The wrapper adds `--new-process`, which disables GApplication's session-bus registration. As a side effect, later `ttyx -a session-add-right …` invocations can't discover the debug instance on the bus, so they fall through to creating a new window and print "No ttyx_ instance registered on the session bus…". If you're testing CLI actions, launch ttyx_ normally (without the wrapper).
+
 ## Tests
 
 ### Unit tests

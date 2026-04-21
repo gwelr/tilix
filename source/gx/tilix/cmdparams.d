@@ -190,7 +190,11 @@ public:
         _terminalUUID = getValue(vd, CMD_TERMINAL_UUID, vts);
         if (_action.length > 0) {
             if (!acl.getIsRemote()) {
-                writeln(_("You can only use the action parameter within ttyx_"));
+                // Fired when no primary ttyx_ is registered on the session bus.
+                // Typical cause: the running instance was launched with
+                // --new-process (which disables GApplication bus registration),
+                // so secondary invocations can't find it to forward the action.
+                writeln(_("No ttyx_ instance registered on the session bus to receive the action. (Instances started with --new-process are not bus-registered.)"));
                 _exitCode = 2;
                 _exit = true;
                 _action.length = 0;
