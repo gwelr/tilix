@@ -226,6 +226,19 @@ unittest {
 }
 
 unittest {
+    // stop() when not running is a no-op and must not segfault.
+    // Regression test for the ~this() / rt_term crash: before the fix,
+    // stop() unconditionally called trace() via std.logger; during GC
+    // termination (rt_term) the logger's Object monitor is already torn
+    // down, causing _d_monitorenter to segfault.
+    ProcessMonitor monitor = new ProcessMonitor();
+    assert(!monitor.running);
+    monitor.stop(); // early-return path: running == false
+    monitor.stop(); // second call must also be safe
+    assert(!monitor.running);
+}
+
+unittest {
     // SSH precedence over root: when isSSH is true, root should be
     // suppressed in the UI. This mirrors the logic in terminal.d's
     // updateIndicators method.
