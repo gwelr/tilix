@@ -1299,6 +1299,11 @@ class AppearancePreferences: Box {
                 add(cbWideHandle);
             }
 
+            CheckButton cbAutoEqualize = new CheckButton(_("Equalize panes on split and close"));
+            cbAutoEqualize.setTooltipText(_("When enabled, splitting or closing a terminal re-equalizes all same-orientation panes (e.g. three vertical splits become 33/33/33 instead of 50/25/25). Overwrites any manual drag within the chain."));
+            bh.bind(SETTINGS_AUTO_EQUALIZE_PANES_KEY, cbAutoEqualize, "active", GSettingsBindFlags.DEFAULT);
+            add(cbAutoEqualize);
+
             CheckButton cbRightSidebar = new CheckButton(_("Place the sidebar on the right"));
             bh.bind(SETTINGS_SIDEBAR_RIGHT, cbRightSidebar, "active", GSettingsBindFlags.DEFAULT);
             add(cbRightSidebar);

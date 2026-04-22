@@ -227,6 +227,11 @@
       <summary>Whether splitters use a narrow (default) or wide handle</summary>
       <description>If true, splitters between terminals use a wide handle. Only supported in GTK 2.16 and later.</description>
     </key>
+    <key name="auto-equalize-panes" type="b">
+      <default>false</default>
+      <summary>Whether panes are automatically resized to equal sizes on split or close</summary>
+      <description>If true, splitting or closing a terminal re-equalizes all same-orientation panes in the chain (e.g. three vertical splits become 33/33/33 instead of 50/25/25, and closing one of three equal panes leaves the remaining two at 50/50). Overwrites any manual drag within the chain. If false (default), manual drags are preserved and nested splits use the Tilix "halve the latest" behaviour.</description>
+    </key>
     <key name="close-with-last-session" type="b">
       <default>true</default>
       <summary>Whether the window should close when the last session is closed</summary>

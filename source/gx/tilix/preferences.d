@@ -82,6 +82,7 @@ enum SETTINGS_TERMINAL_TITLE_SHOW_WHEN_SINGLE_KEY = "terminal-title-show-when-si
 enum SETTINGS_SESSION_NAME_KEY = "session-name";
 
 enum SETTINGS_ENABLE_WIDE_HANDLE_KEY = "enable-wide-handle";
+enum SETTINGS_AUTO_EQUALIZE_PANES_KEY = "auto-equalize-panes";
 enum SETTINGS_NOTIFY_ON_PROCESS_COMPLETE_KEY = "notify-on-process-complete";
 enum SETTINGS_UNSAFE_PASTE_ALERT_KEY = "unsafe-paste-alert";
 enum SETTINGS_WARN_MULTILINE_PASTE_KEY = "warn-multiline-paste";

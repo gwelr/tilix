@@ -198,13 +198,6 @@ private:
         if (Version.checkVersion(3, 16, 0).length == 0) {
             result.setWideHandle(gsSettings.getBoolean(SETTINGS_ENABLE_WIDE_HANDLE_KEY));
         }
-        result.addOnButtonPress(delegate(Event event, Widget w) {
-            if (event.button.window == result.getHandleWindow().getWindowStruct() && event.getEventType() == EventType.DOUBLE_BUTTON_PRESS && event.button.button == MouseButton.PRIMARY) {
-                redistributePanes(cast(Paned) w);
-                return true;
-            }
-            return false;
-        });
         result.setProperty("position-set", true);
         return result;
     }
@@ -499,6 +492,31 @@ private:
         Container container = cast(Container) terminal.getParent();
         container.remove(terminal);
         container.destroy();
+
+        // Auto-equalize panes on close when enabled: after removing a
+        // paned from a chain, re-equalize the remaining panes.
+        // Without this, closing one leaf of a 3-way equal-split leaves
+        // the survivors at their old 33/33 share of the parent, giving
+        // a 67/33 result instead of 50/50.
+        // Anchor search: prefer the promoted widget (if it's a Paned),
+        // otherwise walk up from `parent` to find the nearest ancestor
+        // Paned. If there isn't one, there's nothing left to equalize.
+        if (gsSettings.getBoolean(SETTINGS_AUTO_EQUALIZE_PANES_KEY)) {
+            Paned anchor = cast(Paned) widget;
+            if (anchor is null) {
+                Widget p = parent;
+                while (p !is null && anchor is null) {
+                    anchor = cast(Paned) p;
+                    if (anchor is null) p = p.getParent();
+                }
+            }
+            if (anchor !is null) {
+                threadsAddIdleDelegate(delegate() {
+                    redistributePanes(anchor);
+                    return false;
+                });
+            }
+        }
     }
 
     /**
@@ -540,6 +558,19 @@ private:
         parent.showAll();
         //Fix for issue #33
         focusTerminal(src.terminalID);
+
+        // Auto-equalize panes on split when enabled: redistribute all
+        // same-orientation panes in the chain so three vertical splits
+        // give 33/33/33 instead of 50/25/25. Deferred to idle because
+        // redistributePanes reads getAllocatedWidth/Height, which is
+        // only set after GTK's next layout pass. Overwrites any prior
+        // manual drag within the chain.
+        if (gsSettings.getBoolean(SETTINGS_AUTO_EQUALIZE_PANES_KEY)) {
+            threadsAddIdleDelegate(delegate() {
+                redistributePanes(paned);
+                return false;
+            });
+        }
     }
 
     void onTerminalRequestMove(string srcUUID, Terminal dest, DragQuadrant dq) {
