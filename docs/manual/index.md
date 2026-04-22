@@ -23,3 +23,4 @@ Topic-by-topic reference for ttyx_ features. Content adapted from the [Tilix man
 - [Margin indicators]({{ site.baseurl }}/manual/margin/) — visual markers at column positions
 - [VTE configuration]({{ site.baseurl }}/manual/vteconfig/) — low-level terminal emulator tuning
 - [CLI actions]({{ site.baseurl }}/manual/cliactions/) — invoke ttyx_ actions from the command line
+- [Splits and pane layout]({{ site.baseurl }}/manual/splits/) — equal-size panes on split/close, and how to disable it
