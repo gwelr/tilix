@@ -84,7 +84,12 @@ public:
     }
 
     ~this() {
-        stop();
+        // Intentionally empty. stop() calls trace() via std.logger, which
+        // synchronizes on an Object monitor. When ~this() fires during GC
+        // termination (rt_term), the monitor subsystem has already been
+        // torn down and _d_monitorenter segfaults in rt.monitor_.ensureMonitor.
+        // The spawned worker thread is reaped by the D runtime's thread
+        // cleanup on process exit, so there's nothing useful left to do here.
     }
 
     void start() {
@@ -95,7 +100,8 @@ public:
     }
 
     void stop() {
-        if (running) tid.send(true);
+        if (!running) return;
+        tid.send(true);
         running = false;
         trace("Stopped process monitoring");
     }
