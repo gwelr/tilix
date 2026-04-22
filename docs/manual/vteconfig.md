@@ -62,5 +62,3 @@ PROMPT_COMMAND=custom_prompt
 ### Option 3 — Run the shell as a login shell
 
 Enable **Preferences → Profile → Command → Run command as login shell**. Login shells run `/etc/profile.d/*` scripts on any distribution, so this fixes the issue at the cost of running your full login environment every time you open a terminal.
-
-![Profile preferences showing the Run command as login shell option]({{ site.baseurl }}/assets/images/manual/login_shell_preference.png)

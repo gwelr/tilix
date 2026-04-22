@@ -5,9 +5,6 @@ nav_order: 5
 layout: default
 ---
 
-
-![Example of a terminal badge displaying text overlaid on the terminal background]({{site.baseurl}}/assets/images/manual/badges.png)
-
 ## Overview
 
 Badges are text overlays displayed in the background of the terminal. They can act as visual reminders (e.g. environment name, pod name), or as a way to show the terminal title when the title bar is disabled.

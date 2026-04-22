@@ -18,9 +18,7 @@ Custom links are configured at the **Profile** level in **Preferences → Profil
 
 ## Example
 
-![gedit launched with filename and line number from a Python traceback]({{site.baseurl}}/assets/images/manual/links.png)
-
-The screenshot shows a regex that matches `File "path", line N` in a Python traceback and a command that opens `gedit` at the right file and line. The regex has two capture groups (file path and line number), used as `$1` and `$2` in the command.
+To make Python traceback locations clickable, pair the regex `File "([^"]+)", line (\d+)` with the command `gedit +$2 $1`. The two capture groups (file path, line number) are passed to `gedit` via `$1` and `$2`.
 
 Any command on `$PATH` works — common uses:
 

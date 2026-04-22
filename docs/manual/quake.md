@@ -19,9 +19,11 @@ When `ttyx --quake` runs, it checks whether a quake-style window already exists 
 
 ## Configuring the hot key in GNOME
 
-Open GNOME's Keyboard settings and add a custom shortcut matching the screenshot below:
+Open **Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts** and add a new entry:
 
-![GNOME custom shortcut for ttyx --quake]({{site.baseurl}}/assets/images/manual/hotkey.png)
+- **Name** — anything you like (e.g. `ttyx quake`).
+- **Command** — `ttyx --quake`.
+- **Shortcut** — whatever key combination you want to toggle the window (e.g. `F12`).
 
 ## Wayland
 

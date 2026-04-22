@@ -5,8 +5,6 @@ nav_order: 8
 layout: default
 ---
 
-![Terminal with a vertical margin line at column 80]({{site.baseurl}}/assets/images/manual/margin.png)
-
 ## Overview
 
 Many style guides require lines to stay under a fixed column width (typically 80 or 100 characters) to keep code readable. When using text-mode editors like `vi`, `emacs`, or `nano`, a visible margin line makes it easy to see when you're about to go over.
