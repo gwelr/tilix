@@ -198,13 +198,6 @@ private:
         if (Version.checkVersion(3, 16, 0).length == 0) {
             result.setWideHandle(gsSettings.getBoolean(SETTINGS_ENABLE_WIDE_HANDLE_KEY));
         }
-        result.addOnButtonPress(delegate(Event event, Widget w) {
-            if (event.button.window == result.getHandleWindow().getWindowStruct() && event.getEventType() == EventType.DOUBLE_BUTTON_PRESS && event.button.button == MouseButton.PRIMARY) {
-                redistributePanes(cast(Paned) w);
-                return true;
-            }
-            return false;
-        });
         result.setProperty("position-set", true);
         return result;
     }
@@ -499,6 +492,31 @@ private:
         Container container = cast(Container) terminal.getParent();
         container.remove(terminal);
         container.destroy();
+
+        // Auto-equalize panes on close when enabled: after removing a
+        // paned from a chain, re-equalize the remaining panes.
+        // Without this, closing one leaf of a 3-way equal-split leaves
+        // the survivors at their old 33/33 share of the parent, giving
+        // a 67/33 result instead of 50/50.
+        // Anchor search: prefer the promoted widget (if it's a Paned),
+        // otherwise walk up from `parent` to find the nearest ancestor
+        // Paned. If there isn't one, there's nothing left to equalize.
+        if (gsSettings.getBoolean(SETTINGS_AUTO_EQUALIZE_PANES_KEY)) {
+            Paned anchor = cast(Paned) widget;
+            if (anchor is null) {
+                Widget p = parent;
+                while (p !is null && anchor is null) {
+                    anchor = cast(Paned) p;
+                    if (anchor is null) p = p.getParent();
+                }
+            }
+            if (anchor !is null) {
+                threadsAddIdleDelegate(delegate() {
+                    redistributePanes(anchor);
+                    return false;
+                });
+            }
+        }
     }
 
     /**
@@ -540,6 +558,19 @@ private:
         parent.showAll();
         //Fix for issue #33
         focusTerminal(src.terminalID);
+
+        // Auto-equalize panes on split when enabled: redistribute all
+        // same-orientation panes in the chain so three vertical splits
+        // give 33/33/33 instead of 50/25/25. Deferred to idle because
+        // redistributePanes reads getAllocatedWidth/Height, which is
+        // only set after GTK's next layout pass. Overwrites any prior
+        // manual drag within the chain.
+        if (gsSettings.getBoolean(SETTINGS_AUTO_EQUALIZE_PANES_KEY)) {
+            threadsAddIdleDelegate(delegate() {
+                redistributePanes(paned);
+                return false;
+            });
+        }
     }
 
     void onTerminalRequestMove(string srcUUID, Terminal dest, DragQuadrant dq) {
@@ -1850,6 +1881,16 @@ private:
             PanedNode[] nodes = getBranch(root, i);
             tracef("Branch %d has %d nodes", i, nodes.length);
             foreach (n; nodes) {
+                // Update the TerminalPaned's ratio so the size-allocate
+                // handler doesn't revert our setPosition to allocatedWidth*ratio
+                // on the next layout pass. pos/size is the correct ratio for
+                // this paned within its share of the chain (e.g. in a 4-leaf
+                // horizontal chain the outermost paned gets 1/4, the next 1/3,
+                // the innermost 1/2).
+                TerminalPaned tp = cast(TerminalPaned) n.paned;
+                if (tp !is null && n.size > 0) {
+                    tp.ratio = cast(double) n.pos / cast(double) n.size;
+                }
                 tracef("    1st pass, Node set to pos %d from pos %d", n.pos, n.paned.getPosition());
                 n.paned.setPosition(n.pos);
                 // Add idle handler to reset child properties and take one more stab at setting position. GTKPaned
@@ -1896,6 +1937,15 @@ public:
         this.root = createModel(paned);
     }
 
+    version(unittest) {
+        // Test-only constructor: accepts a pre-built PanedNode tree so
+        // tests can exercise calculateSize without a live GTK widget.
+        this(PanedNode testRoot, int nodeCount) {
+            this.root = testRoot;
+            this._count = nodeCount;
+        }
+    }
+
     void calculateSize(int baseSize) {
         calculateSize(root, baseSize);
     }
@@ -1928,4 +1978,73 @@ class PanedNode {
     this(Paned paned) {
         this.paned = paned;
     }
+}
+
+// -- Unit tests --
+
+unittest {
+    // 2-pane chain: single Paned with two terminal leaves.
+    // calculateSize(baseSize=100) should position the splitter at 50%.
+    PanedNode root = new PanedNode(null);
+    // child[0] and child[1] are null by default → two leaf terminals
+    PanedModel model = new PanedModel(root, 1);
+    model.calculateSize(100);
+    assert(root.size == 200, "2-pane: size should be 2*baseSize");
+    assert(root.pos  == 100, "2-pane: splitter at 50%");
+    assert(root.pos * 2 == root.size, "2-pane: pos/size ratio must be exactly 1/2");
+}
+
+unittest {
+    // 3-pane horizontal chain: ((A|B)|C) with baseSize=100.
+    // Expected: inner pos=100/200, outer pos=200/300.
+    // Closing one of three equal panes should leave 50/50, which
+    // collapses back to the 2-pane case above.
+    PanedNode inner = new PanedNode(null); // A | B
+    PanedNode outer = new PanedNode(null); // (A|B) | C
+    outer.child[0] = inner;
+    // outer.child[1] == null → leaf C
+
+    PanedModel model = new PanedModel(outer, 2);
+    model.calculateSize(100);
+
+    assert(inner.size == 200, "3-pane: inner size should be 2*baseSize");
+    assert(inner.pos  == 100, "3-pane: inner splitter at 50% of its share");
+    assert(outer.size == 300, "3-pane: outer size should be 3*baseSize");
+    assert(outer.pos  == 200, "3-pane: outer splitter gives 2/3 to left subtree");
+
+    // Ratios written into TerminalPaned.ratio in PanedModel.resize():
+    //   outer ratio = 200/300 ≈ 0.667 → left occupies 200px of 300px
+    //   inner ratio = 100/200 = 0.500 → A and B each get 100px
+    assert(outer.pos * 3 == outer.size * 2, "3-pane: outer ratio is 2/3");
+}
+
+unittest {
+    // 4-pane chain: (((A|B)|C)|D) with baseSize=100.
+    // This is the regression case for the ratio-update bug: before the fix
+    // TerminalPaned.ratio defaulted to 0.5 for every node, causing the
+    // onSizeAllocate handler to revert setPosition() calls.
+    // After the fix, PanedModel.resize() writes pos/size into each
+    // TerminalPaned.ratio before calling setPosition().
+    PanedNode innermost = new PanedNode(null); // A | B
+    PanedNode middle    = new PanedNode(null); // (A|B) | C
+    PanedNode outermost = new PanedNode(null); // ((A|B)|C) | D
+    middle.child[0]    = innermost;
+    outermost.child[0] = middle;
+
+    PanedModel model = new PanedModel(outermost, 3);
+    model.calculateSize(100);
+
+    assert(innermost.size == 200, "4-pane: innermost size = 2*baseSize");
+    assert(innermost.pos  == 100, "4-pane: innermost splitter at 50%");
+    assert(middle.size    == 300, "4-pane: middle size = 3*baseSize");
+    assert(middle.pos     == 200, "4-pane: middle splitter at 2/3");
+    assert(outermost.size == 400, "4-pane: outermost size = 4*baseSize");
+    assert(outermost.pos  == 300, "4-pane: outermost splitter at 3/4");
+
+    // Verify that none of the ratios equal the old default (0.5) except
+    // the innermost, which is correctly 0.5 for a 2-leaf pair.
+    // (outer and middle must NOT be 0.5 — that was the pre-fix bug.)
+    assert(outermost.pos * 4 == outermost.size * 3, "4-pane: outermost ratio is 3/4, not the old 1/2 default");
+    assert(middle.pos    * 3 == middle.size    * 2, "4-pane: middle ratio is 2/3, not the old 1/2 default");
+    assert(innermost.pos * 2 == innermost.size * 1, "4-pane: innermost ratio is 1/2 (correct for leaf pair)");
 }
