@@ -1,0 +1,6 @@
+FROM debian:trixie
+COPY .github/ci/install-deps-deb.sh /tmp/
+RUN chmod +x /tmp/install-deps-deb.sh && /tmp/install-deps-deb.sh
+COPY .github/ci/make-install-deps-extern.sh /tmp/
+RUN chmod +x /tmp/make-install-deps-extern.sh && /tmp/make-install-deps-extern.sh
+WORKDIR /build

@@ -3,6 +3,13 @@
 docs.json
 __dummy.html
 *.o
+# Build and test artifacts
+data/gsettings/gschemas.compiled
+ttyx-test-default
+# Local working scripts (not part of the project)
+monitor-rss.sh
+monitor-ptyxis.sh
+test.sh
 *.obj
 *.zip
 /tilix
