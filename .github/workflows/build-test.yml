@@ -70,6 +70,11 @@ jobs:
       run: podman run -t -e COMPILER_VENDOR=$CVENDOR -e CC=gcc -e CXX=g++ -v `pwd`:/build ttyx
            ./.github/ci/run-tests.sh
 
+    - name: Memory Footprint
+      continue-on-error: true
+      run: podman run -t -e CC=gcc -e CXX=g++ -v `pwd`:/build ttyx
+           ./.github/ci/measure-memory.sh
+
 
   build-dub-ubuntu:
     name: Dub
@@ -108,3 +113,10 @@ jobs:
 
     - name: Test
       run: xvfb-run dub test --compiler=$DC
+
+    - name: GC Profile
+      run: |
+        OUTPUT=$(xvfb-run dub test --compiler=$DC -- --DRT-gcopt=profile:1 2>&1)
+        GC_LINE=$(echo "$OUTPUT" | grep "GC summary" || echo "GC summary: not available")
+        echo "### GC profile (${{ matrix.dc }})" >> "$GITHUB_STEP_SUMMARY"
+        printf '```\n%s\n```\n' "$GC_LINE" >> "$GITHUB_STEP_SUMMARY"
