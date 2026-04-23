@@ -22,9 +22,9 @@ import gx.i18n.l10n;
 import gx.gtk.util;
 import gx.gtk.vte;
 
-import gx.tilix.application;
-import gx.tilix.cmdparams;
-import gx.tilix.constants;
+import gx.ttyx.application;
+import gx.ttyx.cmdparams;
+import gx.ttyx.constants;
 import gx.util.redact : stripUrlUserinfo;
 
 /**

@@ -128,7 +128,7 @@ Key conventions worth knowing:
 ## Codebase orientation
 
 - `source/app.d` — entry point.
-- `source/gx/tilix/` — core application logic.
+- `source/gx/ttyx/` — core application logic.
   - `application.d` — GTK Application lifecycle, action registration.
   - `appwindow.d` — main window, paned terminal layout.
   - `session.d` — session/workspace management (JSON serialization).

@@ -12,7 +12,7 @@ ttyx_ Release Process
 
 3. Update version number in both:
    - `meson.build` (project version field)
-   - `source/gx/tilix/constants.d` (`APPLICATION_VERSION`)
+   - `source/gx/ttyx/constants.d` (`APPLICATION_VERSION`)
 
 4. Write NEWS entries:
    ```
@@ -85,7 +85,7 @@ ttyx_ Release Process
 
 11. Bump version to next development version in:
     - `meson.build`
-    - `source/gx/tilix/constants.d`
+    - `source/gx/ttyx/constants.d`
 
 12. Commit and push:
     ```
