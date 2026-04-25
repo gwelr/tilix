@@ -120,17 +120,42 @@ bool isPasteUnsafe(string text) {
 }
 
 /**
- * Strip bracketed paste escape sequences from clipboard content.
+ * Strip paste-relevant terminal escape sequences from clipboard content.
  *
- * Removes ESC[200~ (start) and ESC[201~ (end) sequences that could be
- * used to break out of VTE's bracketed paste mode and inject commands.
- * This is an unconditional security sanitization — there is no legitimate
- * reason to paste these terminal control codes.
+ * Removes:
+ *   - Bracketed paste markers (ESC[200~, ESC[201~) — used to break out
+ *     of VTE's bracketed paste mode and inject commands.
+ *   - OSC (Operating System Command, ESC]…BEL or ESC]…ESC\) — covers
+ *     OSC 52, the clipboard-hijack vector that lets a remote source
+ *     overwrite the system clipboard. VTE does not implement OSC 52
+ *     today; this is defense-in-depth.
+ *   - DCS (Device Control String, ESC P…ESC\), APC (ESC _…ESC\),
+ *     PM (ESC ^…ESC\) — string-form sequences with no legitimate use
+ *     in pasted text. Bundled with OSC because they share the shape
+ *     and the same defense-in-depth argument applies.
+ *
+ * Unconditional sanitization — applied to every paste regardless of
+ * settings. CSI color sequences (ESC[…m) are intentionally left alone:
+ * they are the most common legitimate escape in clipboard text.
+ *
+ * Limitation: malformed sequences (introducer without a terminator)
+ * are not stripped. They cannot trigger interpretation in a normal
+ * terminal but can briefly cause input swallowing until a terminator
+ * arrives. Out of scope for this pass; revisit if it becomes an issue.
  */
-string stripBracketedPasteEscapes(string text) {
+string stripPasteEscapes(string text) {
     import std.regex : ctRegex, replaceAll;
-    enum re = ctRegex!`\x1b\[(200|201)~`;
-    return text.replaceAll(re, "");
+    // Bracketed paste markers.
+    enum bracketedRe = ctRegex!`\x1b\[(200|201)~`;
+    // OSC: terminated by BEL or ST (ESC\). Body excludes both so the
+    // shortest well-formed sequence is matched.
+    enum oscRe = ctRegex!`\x1b\][^\x07\x1b]*(\x07|\x1b\\)`;
+    // DCS / APC / PM: introducer P, _, or ^; terminated by ST (ESC\).
+    enum stStringRe = ctRegex!`\x1b[P_^][^\x1b]*\x1b\\`;
+    string r = text.replaceAll(bracketedRe, "");
+    r = r.replaceAll(oscRe, "");
+    r = r.replaceAll(stStringRe, "");
+    return r;
 }
 
 /**
@@ -178,7 +203,7 @@ public:
     void advancedPaste(GdkAtom source) {
         string pasteText = Clipboard.get(source).waitForText();
         if (pasteText.length == 0) return;
-        pasteText = stripBracketedPasteEscapes(pasteText);
+        pasteText = stripPasteEscapes(pasteText);
         if (pasteText.indexOf("\n") < 0) return paste(source);
 
         AdvancedPasteDialog dialog = new AdvancedPasteDialog(
@@ -256,7 +281,7 @@ public:
     void paste(GdkAtom source) {
         string pasteText = Clipboard.get(source).waitForText();
         if (pasteText.length == 0) return;
-        pasteText = stripBracketedPasteEscapes(pasteText);
+        pasteText = stripPasteEscapes(pasteText);
 
         bool stripTrailingWhitespace = _ctx.contextGsSettings().getBoolean(SETTINGS_STRIP_TRAILING_WHITESPACE);
         if (stripTrailingWhitespace) {
@@ -448,56 +473,108 @@ unittest {
 }
 
 // ---------------------------------------------------------------------------
-// Unit tests for stripBracketedPasteEscapes
+// Unit tests for stripPasteEscapes
 // ---------------------------------------------------------------------------
 
 /// Test: strips ESC[200~ (start bracketed paste).
 unittest {
-    assert(stripBracketedPasteEscapes("\x1b[200~hello") == "hello");
+    assert(stripPasteEscapes("\x1b[200~hello") == "hello");
 }
 
 /// Test: strips ESC[201~ (end bracketed paste).
 unittest {
-    assert(stripBracketedPasteEscapes("hello\x1b[201~") == "hello");
+    assert(stripPasteEscapes("hello\x1b[201~") == "hello");
 }
 
 /// Test: strips both start and end sequences.
 unittest {
-    assert(stripBracketedPasteEscapes("\x1b[200~hello\x1b[201~") == "hello");
+    assert(stripPasteEscapes("\x1b[200~hello\x1b[201~") == "hello");
 }
 
 /// Test: strips injected end-bracketed-paste attack payload.
 unittest {
     string attack = "echo harmless\x1b[201~\nrm -rf ~/Documents\n";
-    string sanitized = stripBracketedPasteEscapes(attack);
+    string sanitized = stripPasteEscapes(attack);
     assert(sanitized.indexOf("\x1b[201~") < 0, "attack sequence must be removed");
     assert(sanitized == "echo harmless\nrm -rf ~/Documents\n");
 }
 
 /// Test: preserves normal text without escape sequences.
 unittest {
-    assert(stripBracketedPasteEscapes("normal text\nwith newlines") == "normal text\nwith newlines");
+    assert(stripPasteEscapes("normal text\nwith newlines") == "normal text\nwith newlines");
 }
 
 /// Test: handles empty string.
 unittest {
-    assert(stripBracketedPasteEscapes("") == "");
+    assert(stripPasteEscapes("") == "");
 }
 
 /// Test: handles text that is only escape sequences.
 unittest {
-    assert(stripBracketedPasteEscapes("\x1b[200~\x1b[201~") == "");
+    assert(stripPasteEscapes("\x1b[200~\x1b[201~") == "");
 }
 
 /// Test: handles multiple occurrences.
 unittest {
-    assert(stripBracketedPasteEscapes("\x1b[200~a\x1b[201~b\x1b[200~c\x1b[201~") == "abc");
+    assert(stripPasteEscapes("\x1b[200~a\x1b[201~b\x1b[200~c\x1b[201~") == "abc");
 }
 
-/// Test: preserves other escape sequences (only strips bracketed paste).
+/// Test: preserves CSI sequences (color codes etc.) — only string-form
+/// escape families and bracketed-paste markers are stripped.
 unittest {
-    // ESC[0m (reset colors) should NOT be stripped
-    assert(stripBracketedPasteEscapes("\x1b[0mhello") == "\x1b[0mhello");
+    assert(stripPasteEscapes("\x1b[0mhello") == "\x1b[0mhello");
+    assert(stripPasteEscapes("\x1b[1;31mred\x1b[0m") == "\x1b[1;31mred\x1b[0m");
+}
+
+/// Test: strips OSC 52 clipboard-hijack with BEL terminator.
+unittest {
+    string attack = "before\x1b]52;c;aGVsbG8=\x07after";
+    assert(stripPasteEscapes(attack) == "beforeafter");
+}
+
+/// Test: strips OSC 52 clipboard-hijack with ST (ESC\) terminator.
+unittest {
+    string attack = "before\x1b]52;c;aGVsbG8=\x1b\\after";
+    assert(stripPasteEscapes(attack) == "beforeafter");
+}
+
+/// Test: strips OSC sequences other than 52 (e.g. window title).
+unittest {
+    assert(stripPasteEscapes("\x1b]0;evil-title\x07hello") == "hello");
+}
+
+/// Test: strips DCS sequences (ESC P ... ESC\).
+unittest {
+    assert(stripPasteEscapes("a\x1bPq#payload\x1b\\b") == "ab");
+}
+
+/// Test: strips APC sequences (ESC _ ... ESC\) — Kitty graphics shape.
+unittest {
+    assert(stripPasteEscapes("a\x1b_Gpayload\x1b\\b") == "ab");
+}
+
+/// Test: strips PM sequences (ESC ^ ... ESC\).
+unittest {
+    assert(stripPasteEscapes("a\x1b^msg\x1b\\b") == "ab");
+}
+
+/// Test: multiple escape families in one paste are all stripped.
+unittest {
+    string mixed = "\x1b[200~"                  // bracketed paste start
+                 ~ "echo hello\n"
+                 ~ "\x1b]52;c;cGF5bG9hZA==\x07"  // OSC 52
+                 ~ "echo world\n"
+                 ~ "\x1b_GAA\x1b\\"              // APC
+                 ~ "\x1b[201~";                  // bracketed paste end
+    assert(stripPasteEscapes(mixed) == "echo hello\necho world\n");
+}
+
+/// Test: malformed (unterminated) string-form sequences are NOT stripped.
+/// Documented limitation — these can't trigger interpretation but may
+/// briefly cause input swallowing. Out of scope for this pass.
+unittest {
+    // Lone OSC introducer — passes through untouched.
+    assert(stripPasteEscapes("\x1b]hello") == "\x1b]hello");
 }
 
 // ---------------------------------------------------------------------------
