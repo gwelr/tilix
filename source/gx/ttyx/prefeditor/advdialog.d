@@ -59,6 +59,11 @@ private:
     void createUI(string[] links) {
 
         setAllMargins(getContentArea(), 18);
+        getContentArea().add(createSecurityWarningLabel(
+            _("Warning: clicked links execute shell commands with captured text "
+            ~ "substituted in. Under SSH or any remote session that text is "
+            ~ "attacker-controlled — review templates for unquoted match-group "
+            ~ "substitutions and only configure custom links for hosts you trust.")));
         Box box = new Box(Orientation.VERTICAL, 6);
 
         ls = new ListStore([GType.STRING, GType.STRING, GType.BOOLEAN]);
@@ -231,6 +236,11 @@ private:
         string[] triggers = gs.getStrv(SETTINGS_ALL_TRIGGERS_KEY);
 
         setAllMargins(getContentArea(), 18);
+        getContentArea().add(createSecurityWarningLabel(
+            _("Warning: ExecuteCommand and RunProcess actions run shell commands "
+            ~ "with captured groups substituted in. Under SSH or any remote session "
+            ~ "terminal output is attacker-controlled — only configure these actions "
+            ~ "for hosts you trust.")));
         Box box = new Box(Orientation.HORIZONTAL, 6);
 
         ls = new ListStore([GType.STRING, GType.STRING, GType.STRING]);
@@ -387,6 +397,16 @@ Label createErrorLabel() {
     lblErrors.setNoShowAll(true);
 
     return lblErrors;
+}
+
+Label createSecurityWarningLabel(string text) {
+    Label lbl = new Label(text);
+    lbl.setHalign(GtkAlign.START);
+    lbl.setMarginBottom(12);
+    lbl.setLineWrap(true);
+    lbl.setMaxWidthChars(70);
+    lbl.setXalign(0.0);
+    return lbl;
 }
 
 bool validateRegex(ListStore ls, int regexColumn, Label lblErrors) {

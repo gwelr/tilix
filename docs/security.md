@@ -114,6 +114,33 @@ Resets the terminal and wipes the scrollback buffer on demand. Available from th
 
 The reset is the VTE reset sequence (equivalent to `reset`), followed by an explicit scrollback-buffer clear. No part of the previous buffer is recoverable from userland after Secure Clear; a privileged attacker with kernel-level access is still out of scope.
 
+## Triggers and custom links — shell injection from terminal output
+
+ttyx_ supports two user-configurable features that turn terminal content into shell commands:
+
+- **Triggers** (Profile preferences → Advanced) — regular expressions that match against terminal output. The `ExecuteCommand` and `RunProcess` actions run a shell command using a template like `notify-send "Build failed" "$1"`, where `$1` is substituted with a regex capture group.
+- **Custom links** (Preferences → Advanced) — clickable regex matches whose template runs through `spawnShell` when the user clicks them.
+
+In both cases the substituted text comes from terminal output. **Under SSH or any remote session, terminal output is attacker-controlled.** A malicious remote host that knows you have a trigger like `^Build failed: (.+)$` → `notify-send "Build failed" "$1"` can emit:
+
+```
+Build failed: oops"; rm -rf ~/Documents; #
+```
+
+After substitution, `spawnShell` receives `notify-send "Build failed" "oops"; rm -rf ~/Documents; #"` — three commands, the second one destructive. This is the same class of bug that has affected iTerm2, tmux `-CC` mode, and various OSC 8 implementations.
+
+### Status
+
+- ttyx_ ships with **no default triggers and no default custom links**. The attack surface is exactly what you opt into.
+- The trigger and custom-link editor dialogs surface the warning at the point of editing.
+- ttyx_ does **not** currently shell-quote match-group substitutions. Designing a safe-substitution scheme that doesn't break legitimate templates (where the user intentionally wants `$1` to expand into multiple shell tokens) is open work.
+
+### Recommendations
+
+- Only enable trigger `ExecuteCommand`/`RunProcess` and custom-link templates for hosts you trust.
+- Avoid templates where a regex capture group lands in a shell-interpreted position. Prefer templates that pass the captured value to a program via a non-shell channel — for example, by setting an env var rather than embedding `$1` in a shell command string. (Subject to change once safe-substitution lands.)
+- Audit any imported trigger configurations the same way you would audit a shell script.
+
 ## Log hygiene
 
 ttyx_ writes debug logs only when file logging is explicitly compiled in (`USE_FILE_LOGGING`, default off). Even so, when logging is enabled:

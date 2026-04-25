@@ -40,7 +40,7 @@ void createAdvancedUI(Grid grid, ref uint row, GSettings delegate() scb, bool sh
     grid.attach(lblCustomLinks, 0, row, 3, 1);
     row++;
 
-    string customLinksDescription = _("A list of user defined links that can be clicked on in the terminal based on regular expression definitions.");
+    string customLinksDescription = _("A list of user defined links that can be clicked on in the terminal based on regular expression definitions. Warning: clicked links execute shell commands with captured text substituted in. Under SSH or any remote session that text is attacker-controlled — only configure custom links for hosts you trust, and review templates for unquoted match-group substitutions.");
     grid.attach(createDescriptionLabel(customLinksDescription), 0, row, 2, 1);
 
     Button btnEditLink = new Button(_("Edit"));
@@ -71,7 +71,7 @@ void createAdvancedUI(Grid grid, ref uint row, GSettings delegate() scb, bool sh
         grid.attach(lblTriggers, 0, row, 3, 1);
         row++;
 
-        string triggersDescription = _("Triggers are regular expressions that are used to check against output text in the terminal. When a match is detected the configured action is executed.");
+        string triggersDescription = _("Triggers are regular expressions that are used to check against output text in the terminal. When a match is detected the configured action is executed. Warning: ExecuteCommand and RunProcess actions run shell commands with captured groups substituted in. Under SSH or any remote session terminal output is attacker-controlled — only configure these actions for hosts you trust.");
         grid.attach(createDescriptionLabel(triggersDescription), 0, row, 2, 1);
 
         Button btnEditTriggers = new Button(_("Edit"));
