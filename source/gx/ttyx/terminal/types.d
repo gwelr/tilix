@@ -4,7 +4,9 @@
  */
 module gx.ttyx.terminal.types;
 
+import std.json;
 import std.sumtype;
+import std.typecons : Nullable, nullable;
 
 import gdk.Event;
 import gx.ttyx.preferences;
@@ -115,6 +117,105 @@ alias SyncInputEvent = SumType!(
     SyncResetEvent,
     SyncResetAndClearEvent
 );
+
+/// Terminal serialization node keys — single source of truth for the
+/// on-disk JSON schema. Used by both TerminalSnapshot.toJSON/fromJSON
+/// and (where they are session-level) by session.d.
+enum NODE_PROFILE = "profile";
+enum NODE_DIRECTORY = "directory";
+enum NODE_UUID = "uuid";
+enum NODE_MAXIMIZED = "maximized";
+enum NODE_TITLE = "title";
+enum NODE_BADGE = "badge";
+enum NODE_OVERRIDE_CMD = "overrideCommand";
+enum NODE_READONLY = "readOnly";
+enum NODE_SYNCHRONIZED_INPUT = "synchronizedInput";
+
+/**
+ * Typed serialization of a Terminal for session persistence.
+ *
+ * Replaces the previous ad-hoc JSON building scattered between
+ * session.d (which wrote profile/directory/uuid/maximized) and
+ * terminal.d (which wrote title/badge/command/readOnly/syncInput).
+ * Adding a field now requires a single struct change instead of
+ * coordinated edits in two files.
+ *
+ * **Authority for `maximized`**: this is session-level state — the
+ * Terminal does not know whether it is the maximized one. The session
+ * populates `snapshot.maximized` before serialising and reads it back
+ * from the deserialised snapshot itself. `Terminal.snapshot()` does
+ * not set it; `Terminal.restore()` does not consume it.
+ *
+ * **Wire format**: matches what session.d + terminal.d wrote pre-refactor,
+ * verified by the golden roundtrip unittest below. Per-terminal
+ * `width`/`height` writes (which were never read on the per-terminal
+ * deserialisation path) are dropped — older readers ignored them, new
+ * writers no longer emit them.
+ *
+ * **Optional fields**: `overrideTitle`, `overrideBadge`, `overrideCommand`
+ * are `Nullable!string`. `isNull` means "no override set"; this replaces
+ * the previous empty-string sentinel where empty meant absent. `readOnly`
+ * and `synchronizedInput` are plain `bool` — the wire format always
+ * carries them.
+ *
+ * **Lenient deserialization**: missing keys produce default-initialised
+ * fields (Nullable.init = null, bool init = false). Unknown keys are
+ * ignored — keeps backwards/forwards compatibility across schema drift.
+ */
+struct TerminalSnapshot {
+    string profileUUID;
+    string directory;
+    string uuid;
+
+    /// Session-level state — populated by session.d before serialising,
+    /// read back by session.d after deserialising. Not set by Terminal.snapshot,
+    /// not consumed by Terminal.restore.
+    bool maximized;
+
+    /// Override title, null when no override is set.
+    Nullable!string overrideTitle;
+    /// Override badge text, null when no override is set.
+    Nullable!string overrideBadge;
+    /// Override exec command, null when no override is set.
+    Nullable!string overrideCommand;
+
+    /// True when input is disabled (terminal is read-only).
+    bool readOnly;
+    /// Per-terminal override flag for synchronized-input behaviour.
+    bool synchronizedInput;
+
+    /// Build a JSON object representing this snapshot. Wire format
+    /// matches what session.d + terminal.d wrote pre-refactor.
+    JSONValue toJSON() const {
+        JSONValue v;
+        v[NODE_PROFILE] = JSONValue(profileUUID);
+        v[NODE_DIRECTORY] = JSONValue(directory);
+        v[NODE_UUID] = JSONValue(uuid);
+        if (maximized) v[NODE_MAXIMIZED] = JSONValue(true);
+        if (!overrideTitle.isNull) v[NODE_TITLE] = JSONValue(overrideTitle.get);
+        if (!overrideBadge.isNull) v[NODE_BADGE] = JSONValue(overrideBadge.get);
+        if (!overrideCommand.isNull) v[NODE_OVERRIDE_CMD] = JSONValue(overrideCommand.get);
+        v[NODE_READONLY] = JSONValue(readOnly);
+        v[NODE_SYNCHRONIZED_INPUT] = JSONValue(synchronizedInput);
+        return v;
+    }
+
+    /// Parse a JSON object into a snapshot. Lenient: missing keys
+    /// produce default-initialised fields, unknown keys are ignored.
+    static TerminalSnapshot fromJSON(JSONValue v) {
+        TerminalSnapshot s;
+        if (NODE_PROFILE in v) s.profileUUID = v[NODE_PROFILE].str();
+        if (NODE_DIRECTORY in v) s.directory = v[NODE_DIRECTORY].str();
+        if (NODE_UUID in v) s.uuid = v[NODE_UUID].str();
+        if (NODE_MAXIMIZED in v && v[NODE_MAXIMIZED].type == JSONType.true_) s.maximized = true;
+        if (NODE_TITLE in v) s.overrideTitle = v[NODE_TITLE].str().nullable;
+        if (NODE_BADGE in v) s.overrideBadge = v[NODE_BADGE].str().nullable;
+        if (NODE_OVERRIDE_CMD in v) s.overrideCommand = v[NODE_OVERRIDE_CMD].str().nullable;
+        if (NODE_READONLY in v) s.readOnly = (v[NODE_READONLY].type == JSONType.true_);
+        if (NODE_SYNCHRONIZED_INPUT in v) s.synchronizedInput = (v[NODE_SYNCHRONIZED_INPUT].type == JSONType.true_);
+        return s;
+    }
+}
 
 /************************************************************************
  * Package-private types — used only within the terminal package
@@ -232,13 +333,6 @@ struct TerminalTriggerMatch {
     size_t index;
 }
 
-/// Terminal serialization node keys.
-enum NODE_OVERRIDE_CMD = "overrideCommand";
-enum NODE_BADGE = "badge";
-enum NODE_TITLE = "title";
-enum NODE_READONLY = "readOnly";
-enum NODE_SYNCHRONIZED_INPUT = "synchronizedInput";
-
 // ---------------------------------------------------------------------------
 // Unit tests for TerminalTrigger
 // ---------------------------------------------------------------------------
@@ -341,4 +435,130 @@ unittest {
         threw = true;
     }
     assert(threw, "construction with empty senderUUID should fail the in-contract");
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for TerminalSnapshot
+// ---------------------------------------------------------------------------
+
+/// Test: golden roundtrip — JSON shape produced by ttyx 1.1.x must
+/// deserialize cleanly and serialize back to an equivalent shape.
+unittest {
+    // Hand-crafted JSON, NOT generated by toJSON, so this verifies
+    // wire compatibility with what previous versions actually wrote.
+    enum string golden = `{
+        "profile": "abc-123-prof",
+        "directory": "/home/user/work",
+        "uuid": "term-uuid-1",
+        "title": "custom title",
+        "badge": "build",
+        "overrideCommand": "ssh host",
+        "readOnly": false,
+        "synchronizedInput": false
+    }`;
+    JSONValue parsed = parseJSON(golden);
+    TerminalSnapshot s = TerminalSnapshot.fromJSON(parsed);
+    assert(s.profileUUID == "abc-123-prof");
+    assert(s.directory == "/home/user/work");
+    assert(s.uuid == "term-uuid-1");
+    assert(!s.overrideTitle.isNull && s.overrideTitle.get == "custom title");
+    assert(!s.overrideBadge.isNull && s.overrideBadge.get == "build");
+    assert(!s.overrideCommand.isNull && s.overrideCommand.get == "ssh host");
+    assert(!s.readOnly);
+    assert(!s.synchronizedInput);
+    assert(!s.maximized); // omitted in golden, defaults to false
+
+    // Roundtrip: every key in the golden input is present and equal in toJSON output.
+    JSONValue rt = s.toJSON();
+    foreach (string key, ref JSONValue val; parsed.object) {
+        assert(key in rt, "key '" ~ key ~ "' missing from roundtrip output");
+        assert(rt[key].toString() == val.toString(),
+            "key '" ~ key ~ "' value drift: " ~ val.toString() ~ " -> " ~ rt[key].toString());
+    }
+}
+
+/// Test: missing optional keys deserialize as Nullable.init (null).
+unittest {
+    enum string minimal = `{
+        "profile": "p",
+        "directory": "/",
+        "uuid": "u"
+    }`;
+    TerminalSnapshot s = TerminalSnapshot.fromJSON(parseJSON(minimal));
+    assert(s.overrideTitle.isNull);
+    assert(s.overrideBadge.isNull);
+    assert(s.overrideCommand.isNull);
+    assert(!s.readOnly);
+    assert(!s.synchronizedInput);
+    assert(!s.maximized);
+}
+
+/// Test: unknown keys in JSON are ignored (forwards compat).
+unittest {
+    enum string withUnknown = `{
+        "profile": "p",
+        "directory": "/",
+        "uuid": "u",
+        "futureField": "ignored",
+        "anotherUnknown": 42
+    }`;
+    TerminalSnapshot s = TerminalSnapshot.fromJSON(parseJSON(withUnknown));
+    assert(s.profileUUID == "p");
+    assert(s.uuid == "u");
+    // No assertion failure — unknown keys silently dropped.
+}
+
+/// Test: maximized field roundtrips correctly when true.
+unittest {
+    TerminalSnapshot s;
+    s.profileUUID = "p";
+    s.directory = "/";
+    s.uuid = "u";
+    s.maximized = true;
+    JSONValue v = s.toJSON();
+    assert(NODE_MAXIMIZED in v);
+    assert(v[NODE_MAXIMIZED].type == JSONType.true_);
+
+    TerminalSnapshot s2 = TerminalSnapshot.fromJSON(v);
+    assert(s2.maximized);
+}
+
+/// Test: maximized=false is omitted from JSON (matches pre-refactor behavior).
+unittest {
+    TerminalSnapshot s;
+    s.profileUUID = "p";
+    s.directory = "/";
+    s.uuid = "u";
+    s.maximized = false;
+    JSONValue v = s.toJSON();
+    assert(NODE_MAXIMIZED !in v,
+        "maximized=false should not be written; pre-refactor behavior was to write only when true");
+}
+
+/// Test: nullable override fields are omitted from JSON when null.
+unittest {
+    TerminalSnapshot s;
+    s.profileUUID = "p";
+    s.directory = "/";
+    s.uuid = "u";
+    // overrideTitle, overrideBadge, overrideCommand all null
+    JSONValue v = s.toJSON();
+    assert(NODE_TITLE !in v);
+    assert(NODE_BADGE !in v);
+    assert(NODE_OVERRIDE_CMD !in v);
+}
+
+/// Test: readOnly=true wire format. Pre-refactor wrote `JSONValue(!vte.getInputEnabled())` —
+/// readOnly:true means input is disabled. Match that convention exactly.
+unittest {
+    TerminalSnapshot s;
+    s.profileUUID = "p";
+    s.directory = "/";
+    s.uuid = "u";
+    s.readOnly = true;
+    JSONValue v = s.toJSON();
+    assert(v[NODE_READONLY].type == JSONType.true_);
+
+    TerminalSnapshot s2 = TerminalSnapshot.fromJSON(v);
+    assert(s2.readOnly);
 }

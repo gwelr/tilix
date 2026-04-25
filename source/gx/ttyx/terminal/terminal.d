@@ -3339,41 +3339,45 @@ public:
         return rFind.getRevealChild();
     }
 
-    JSONValue serialize(JSONValue value) {
-        if (_overrideTitle.length > 0) {
-            value[NODE_TITLE] = JSONValue(_overrideTitle);
-        }
-        if (_overrideBadge.length > 0) {
-            value[NODE_BADGE] = JSONValue(_overrideBadge);
-        }
-        if (_overrideCommand.length > 0) {
-            value[NODE_OVERRIDE_CMD] = JSONValue(_overrideCommand);
-        }
-        value[NODE_READONLY] = JSONValue(!vte.getInputEnabled());
-        value[NODE_SYNCHRONIZED_INPUT] = JSONValue(_synchronizeInputOverride);
-        return value;
+    /**
+     * Take a typed snapshot of this terminal's persisted state.
+     *
+     * Note: snapshot.maximized is left at its default (false). The
+     * session is the authority on which terminal is maximized; the
+     * caller (session.d) sets that field before serialising.
+     */
+    TerminalSnapshot snapshot() {
+        TerminalSnapshot s;
+        s.profileUUID = defaultProfileUUID;
+        s.directory = currentLocalDirectory;
+        s.uuid = _terminalUUID;
+        if (_overrideTitle.length > 0) s.overrideTitle = _overrideTitle.nullable;
+        if (_overrideBadge.length > 0) s.overrideBadge = _overrideBadge.nullable;
+        if (_overrideCommand.length > 0) s.overrideCommand = _overrideCommand.nullable;
+        s.readOnly = !vte.getInputEnabled();
+        s.synchronizedInput = _synchronizeInputOverride;
+        return s;
     }
 
-    void deserialize(JSONValue value) {
-        if (NODE_TITLE in value) {
-            _overrideTitle = value[NODE_TITLE].str();
-        }
-        if (NODE_BADGE in value) {
-            _overrideBadge = value[NODE_BADGE].str();
-        }
-        if (NODE_OVERRIDE_CMD in value) {
-            _overrideCommand = value[NODE_OVERRIDE_CMD].str();
-        }
-        if (NODE_READONLY in value) {
-            vte.setInputEnabled(value[NODE_READONLY].type == JSONType.false_);
-            SimpleAction action = cast(SimpleAction) sagTerminalActions.lookup(ACTION_READ_ONLY);
-            action.setState(new GVariant(!vte.getInputEnabled()));
-        }
-        if (NODE_SYNCHRONIZED_INPUT in value) {
-            _synchronizeInputOverride = (value[NODE_SYNCHRONIZED_INPUT].type == JSONType.true_);
-            SimpleAction action = cast(SimpleAction) sagTerminalActions.lookup(ACTION_SYNC_INPUT_OVERRIDE);
-            action.setState(new GVariant(_synchronizeInputOverride));
-        }
+    /**
+     * Restore terminal state from a snapshot. Mirrors the pre-refactor
+     * deserialize() behaviour: optional override fields are only
+     * applied when present; readOnly and synchronizedInput are always
+     * applied (they are always present in the wire format).
+     *
+     * snapshot.maximized is intentionally not consumed — that is
+     * session-level state, read back by the caller.
+     */
+    void restore(TerminalSnapshot s) {
+        if (!s.overrideTitle.isNull) _overrideTitle = s.overrideTitle.get;
+        if (!s.overrideBadge.isNull) _overrideBadge = s.overrideBadge.get;
+        if (!s.overrideCommand.isNull) _overrideCommand = s.overrideCommand.get;
+        vte.setInputEnabled(!s.readOnly);
+        SimpleAction roAction = cast(SimpleAction) sagTerminalActions.lookup(ACTION_READ_ONLY);
+        roAction.setState(new GVariant(s.readOnly));
+        _synchronizeInputOverride = s.synchronizedInput;
+        SimpleAction siAction = cast(SimpleAction) sagTerminalActions.lookup(ACTION_SYNC_INPUT_OVERRIDE);
+        siAction.setState(new GVariant(_synchronizeInputOverride));
     }
 
     /**
