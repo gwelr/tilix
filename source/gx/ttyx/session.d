@@ -12,6 +12,7 @@ import std.experimental.logger;
 import std.format;
 import std.json;
 import std.string;
+import std.sumtype;
 import std.uuid;
 
 import cairo.Context;
@@ -687,8 +688,11 @@ private:
 
     void onTerminalSyncInput(Terminal originator, SyncInputEvent event) {
         //trace("Got sync input event");
+        // Generic lambda extracts senderUUID — every variant carries it,
+        // so the template instantiates uniformly.
+        string sender = event.match!((v) => v.senderUUID);
         foreach (terminal; terminals) {
-            if (terminal.synchronizeInput && terminal.uuid != event.senderUUID) {
+            if (terminal.synchronizeInput && terminal.uuid != sender) {
                 terminal.handleSyncInput(event);
             }
         }

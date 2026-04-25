@@ -196,8 +196,7 @@ public:
             }
             static if (!USE_COMMIT_SYNCHRONIZATION) {
                 if (_sync.isSynchronizedInput()) {
-                    SyncInputEvent se = SyncInputEvent(
-                        _ctx.terminalUUID(), SyncInputEventType.INSERT_TEXT, null, pasteText);
+                    SyncInputEvent se = SyncTextEvent(_ctx.terminalUUID(), pasteText);
                     _sync.emitSyncInput(se);
                 }
             }
@@ -283,8 +282,7 @@ public:
                 }
                 static if (!USE_COMMIT_SYNCHRONIZATION) {
                     if (_sync.isSynchronizedInput()) {
-                        SyncInputEvent se = SyncInputEvent(
-                            _ctx.terminalUUID(), SyncInputEventType.INSERT_TEXT, null, pasteText);
+                        SyncInputEvent se = SyncTextEvent(_ctx.terminalUUID(), pasteText);
                         _sync.emitSyncInput(se);
                     }
                 }
@@ -325,8 +323,7 @@ public:
         }
         static if (!USE_COMMIT_SYNCHRONIZATION) {
             if (_sync.isSynchronizedInput()) {
-                SyncInputEvent se = SyncInputEvent(
-                    _ctx.terminalUUID(), SyncInputEventType.INSERT_TEXT, null, pasteText);
+                SyncInputEvent se = SyncTextEvent(_ctx.terminalUUID(), pasteText);
                 _sync.emitSyncInput(se);
             }
         }

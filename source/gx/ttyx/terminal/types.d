@@ -4,6 +4,8 @@
  */
 module gx.ttyx.terminal.types;
 
+import std.sumtype;
+
 import gdk.Event;
 import gx.ttyx.preferences;
 
@@ -26,26 +28,93 @@ enum TerminalWindowState {
     MAXIMIZED
 }
 
-/// Type of synchronized input event between terminals.
-enum SyncInputEventType {
-    INSERT_TERMINAL_NUMBER,
-    INSERT_TEXT,
-    KEY_PRESS,
-    RESET,
-    RESET_AND_CLEAR
+/**
+ * Synchronized-input event payloads. Each variant carries exactly the
+ * fields it needs — the type itself is the discriminator, so it is
+ * impossible at compile time to construct a key-press event without an
+ * `Event` or a text event without a `text` payload.
+ *
+ * Producers construct a variant directly: `SyncTextEvent(uuid, text)`.
+ * Consumers dispatch via `event.match!((SyncTextEvent e) {...}, ...)`.
+ *
+ * Construction invariants are enforced by the `in` contracts on each
+ * variant's constructor: senderUUID must be non-empty; payload-bearing
+ * variants reject null payloads.
+ */
+
+/// Sent when a key press should be replayed in a synchronized terminal.
+struct SyncKeyPressEvent {
+    string senderUUID;
+    Event event;
+
+    this(string senderUUID, Event event)
+    in {
+        assert(senderUUID !is null && senderUUID.length > 0);
+        assert(event !is null);
+    }
+    do {
+        this.senderUUID = senderUUID;
+        this.event = event;
+    }
 }
 
-/// Payload for synchronized input events between terminals.
-struct SyncInputEvent {
-    /// UUID of the terminal that originated this event.
+/// Sent when text (paste, password, typed input) should be inserted in a
+/// synchronized terminal.
+struct SyncTextEvent {
     string senderUUID;
-    /// The type of synchronization event.
-    SyncInputEventType eventType;
-    /// Raw keyboard event, set for KEY_PRESS events, null otherwise.
-    Event event;
-    /// Text content to insert, set for INSERT_TEXT events (paste, password, typed input), null otherwise.
     string text;
+
+    this(string senderUUID, string text)
+    in {
+        assert(senderUUID !is null && senderUUID.length > 0);
+        assert(text !is null);
+    }
+    do {
+        this.senderUUID = senderUUID;
+        this.text = text;
+    }
 }
+
+/// Sent when the receiving terminal should insert its own terminal number.
+/// No payload — the receiver substitutes its local terminal ID.
+struct SyncInsertTerminalNumberEvent {
+    string senderUUID;
+
+    this(string senderUUID)
+    in { assert(senderUUID !is null && senderUUID.length > 0); }
+    do { this.senderUUID = senderUUID; }
+}
+
+/// Sent when the receiving terminal should perform a soft reset.
+struct SyncResetEvent {
+    string senderUUID;
+
+    this(string senderUUID)
+    in { assert(senderUUID !is null && senderUUID.length > 0); }
+    do { this.senderUUID = senderUUID; }
+}
+
+/// Sent when the receiving terminal should perform a reset and clear scrollback.
+struct SyncResetAndClearEvent {
+    string senderUUID;
+
+    this(string senderUUID)
+    in { assert(senderUUID !is null && senderUUID.length > 0); }
+    do { this.senderUUID = senderUUID; }
+}
+
+/**
+ * Tagged union of synchronized-input events. Replaces the previous
+ * struct that carried all possible payloads with nullable fields and
+ * an explicit `eventType` discriminator.
+ */
+alias SyncInputEvent = SumType!(
+    SyncKeyPressEvent,
+    SyncTextEvent,
+    SyncInsertTerminalNumberEvent,
+    SyncResetEvent,
+    SyncResetAndClearEvent
+);
 
 /************************************************************************
  * Package-private types — used only within the terminal package
@@ -219,11 +288,57 @@ unittest {
     assert(!di.isDragActive);
 }
 
-/// Test: SyncInputEvent fields.
+/// Test: each SyncInputEvent variant carries the right fields.
 unittest {
-    auto se = SyncInputEvent("uuid-123", SyncInputEventType.INSERT_TEXT, null, "hello");
-    assert(se.senderUUID == "uuid-123");
-    assert(se.eventType == SyncInputEventType.INSERT_TEXT);
-    assert(se.text == "hello");
-    assert(se.event is null);
+    SyncTextEvent t = SyncTextEvent("uuid-123", "hello");
+    assert(t.senderUUID == "uuid-123");
+    assert(t.text == "hello");
+
+    SyncInsertTerminalNumberEvent n = SyncInsertTerminalNumberEvent("uuid-456");
+    assert(n.senderUUID == "uuid-456");
+
+    SyncResetEvent r = SyncResetEvent("uuid-789");
+    assert(r.senderUUID == "uuid-789");
+
+    SyncResetAndClearEvent rc = SyncResetAndClearEvent("uuid-abc");
+    assert(rc.senderUUID == "uuid-abc");
+}
+
+/// Test: SumType wrapper accepts any variant by implicit construction
+/// and dispatches via match!.
+unittest {
+    SyncInputEvent se = SyncTextEvent("uuid-1", "payload");
+    string captured;
+    se.match!(
+        (SyncTextEvent e) { captured = "text:" ~ e.text; },
+        (SyncInsertTerminalNumberEvent e) { captured = "num"; },
+        (SyncKeyPressEvent e) { captured = "key"; },
+        (SyncResetEvent e) { captured = "reset"; },
+        (SyncResetAndClearEvent e) { captured = "rac"; }
+    );
+    assert(captured == "text:payload");
+}
+
+/// Test: SyncTextEvent rejects null text via the in-contract.
+unittest {
+    import core.exception : AssertError;
+    bool threw = false;
+    try {
+        SyncTextEvent t = SyncTextEvent("uuid-1", null);
+    } catch (AssertError) {
+        threw = true;
+    }
+    assert(threw, "construction with null text should fail the in-contract");
+}
+
+/// Test: senderUUID must be non-empty across all variants.
+unittest {
+    import core.exception : AssertError;
+    bool threw = false;
+    try {
+        SyncResetEvent r = SyncResetEvent("");
+    } catch (AssertError) {
+        threw = true;
+    }
+    assert(threw, "construction with empty senderUUID should fail the in-contract");
 }

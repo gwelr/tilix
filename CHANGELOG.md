@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Unit tests for the proxy URL builder, sensitive-value redaction, and process introspection helpers (#55, #56, #58).
 
 ### Changed
+- **Synchronized-input event payload converted to a tagged union** — `SyncInputEvent` is now a `std.sumtype.SumType` of `SyncKeyPressEvent`, `SyncTextEvent`, `SyncInsertTerminalNumberEvent`, `SyncResetEvent`, and `SyncResetAndClearEvent`. Each variant carries exactly the fields it needs and rejects null payloads via `in` contracts, so it is now impossible at compile time to construct a key-press event without an `Event` or a text event without a payload. The consumer in `Terminal.handleSyncInput` dispatches via `match!`, which is exhaustive at compile time — adding a future variant without handling it will fail to compile (#33).
 - Extracted pure helpers out of the terminal widget module to reduce complexity and unlock testing: `pointInTriangle` → `gx.util.geometry`, `parsePairs` → `gx.util.string`, process introspection → `gx.util.proc` (#57, #58).
 - Process root detection now goes through a single `readProcStatus` helper; the `/proc/[pid]/status` parser was previously duplicated across `monitor.d` and `activeprocess.d` (#58).
 - Debug log path resolution now prefers `$XDG_RUNTIME_DIR/ttyx.log` over `/tmp/ttyx.log` when file logging is enabled (#55).

@@ -27,6 +27,7 @@ import std.range;
 import std.regex;
 import std.stdio;
 import std.string;
+import std.sumtype;
 import std.traits;
 import std.typecons;
 import std.uuid;
@@ -685,7 +686,7 @@ private:
         registerActionWithSettings(group, ACTION_PREFIX, ACTION_RESET, gsShortcuts, delegate(GVariant, SimpleAction) {
             vte.reset(false, false);
             if (isSynchronizedInput()) {
-                SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.RESET, null, null);
+                SyncInputEvent se = SyncResetEvent(_terminalUUID);
                 onSyncInput.emit(this, se);
             }
         });
@@ -694,7 +695,7 @@ private:
             // Clear history of prompts
             checkPromptBuffer();
             if (isSynchronizedInput()) {
-                SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.RESET_AND_CLEAR, null, null);
+                SyncInputEvent se = SyncResetAndClearEvent(_terminalUUID);
                 onSyncInput.emit(this, se);
             }
         });
@@ -717,7 +718,7 @@ private:
             string text = to!string(terminalID);
             feedChild(text, true);
             if (isSynchronizedInput()) {
-                SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.INSERT_TERMINAL_NUMBER, null, null);
+                SyncInputEvent se = SyncInsertTerminalNumberEvent(_terminalUUID);
                 onSyncInput.emit(this, se);
             }
         }, null, null);
@@ -736,7 +737,7 @@ private:
                     vte.feedChild(password);
                     static if (!USE_COMMIT_SYNCHRONIZATION) {
                         if (isSynchronizedInput()) {
-                            SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.INSERT_TEXT, null, password);
+                            SyncInputEvent se = SyncTextEvent(_terminalUUID, password);
                             onSyncInput.emit(this, se);
                         }
                     }
@@ -1073,7 +1074,7 @@ private:
                     if (!isVTEHandledKeystroke(event.key.keyval, event.key.state)) return false;
                 }
                 tracef("Synchronizing key %d", event.key.keyval);
-                SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.KEY_PRESS, event);
+                SyncInputEvent se = SyncKeyPressEvent(_terminalUUID, event);
                 onSyncInput.emit(this, se);
             }
             return false;
@@ -1093,7 +1094,7 @@ private:
                 if (vte !is null && isSynchronizedInput() && length > 0) {
                     // Workaround for #888
                     if (text.endsWith("[2;2R") || text.endsWith("[>1;4803;0c")) return;
-                    SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.INSERT_TEXT, null, text);
+                    SyncInputEvent se = SyncTextEvent(_terminalUUID, text);
                     onSyncInput.emit(this, se);
                 }
             });
@@ -1407,7 +1408,7 @@ private:
             vte.feedChild(text);
             static if (!USE_COMMIT_SYNCHRONIZATION) {
                 if (isSynchronizedInput()) {
-                    SyncInputEvent se = SyncInputEvent(_terminalUUID, SyncInputEventType.INSERT_TEXT, null, text);
+                    SyncInputEvent se = SyncTextEvent(_terminalUUID, text);
                     onSyncInput.emit(this, se);
                 }
             }
@@ -3274,43 +3275,47 @@ public:
     }
 
     /**
-     * Called by the session to synchronize input
+     * Called by the session to synchronize input.
+     *
+     * Dispatches on the SumType variant; `match!` is exhaustive at compile
+     * time, so adding a new event variant without handling it here will
+     * fail to compile.
      */
     void handleSyncInput(SyncInputEvent sie) {
         if (!isSynchronizedInput())
             return;
 
-        final switch (sie.eventType) {
-            case SyncInputEventType.INSERT_TERMINAL_NUMBER:
+        sie.match!(
+            (SyncInsertTerminalNumberEvent e) {
                 string text = to!string(terminalID);
                 // Fix #628
                 if (gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY)) {
                     scrollToBottom();
                 }
                 feedChild(text, true);
-                break;
-            case SyncInputEventType.INSERT_TEXT:
-                if (sie.senderUUID != _terminalUUID) {
+            },
+            (SyncTextEvent e) {
+                if (e.senderUUID != _terminalUUID) {
                     // Fix #628
                     if (gsProfile.getBoolean(SETTINGS_PROFILE_SCROLL_ON_INPUT_KEY)) {
                         scrollToBottom();
                     }
-                    feedChild(sie.text, true);
+                    feedChild(e.text, true);
                 }
-                break;
-            case SyncInputEventType.KEY_PRESS:
-                Event newEvent = sie.event.copy();
+            },
+            (SyncKeyPressEvent e) {
+                Event newEvent = e.event.copy();
                 newEvent.key.sendEvent = SendEvent.SYNC;
                 vte.event(newEvent);
-                break;
-            case SyncInputEventType.RESET:
+            },
+            (SyncResetEvent e) {
                 vte.reset(false, false);
-                break;
-            case SyncInputEventType.RESET_AND_CLEAR:
+            },
+            (SyncResetAndClearEvent e) {
                 vte.reset(true, true);
                 checkPromptBuffer();
-                break;
-        }
+            }
+        );
     }
 
     void triggerAction(string name, GVariant value) {
