@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Proxy URL malformed** — the generated `http_proxy` URL had a redundant leading `@` before userinfo, which strict RFC-3986 parsers reject; credentials were also not percent-encoded, so passwords containing `@`, `:`, `/` broke the URL entirely (#51, #55).
 - **`https_proxy` missing authentication** — the auth block was gated on `scheme == "http"` so the HTTPS proxy never received credentials even when configured (#51, #55).
 - **Debian Testing CI build** — GtkD bindings were removed from Debian Testing's apt archive; CI now builds GtkD from source on that image (#49).
+- **CI: LDC compiler installed from upstream tarball** — `ldc` is currently missing from Debian Testing during a transition. All container-based CI images (Debian Stable, Debian Testing, Ubuntu Noble) now install LDC 1.40.0 from the official `ldc-developers` GitHub release tarball instead of apt, so CI is no longer coupled to any one distro's apt archive. Same mitigation pattern as the GtkD-from-source fix from #49.
 
 ### Security
 - **Config migration hardened against symlink attacks** — `migrateConfigBetween` now refuses to follow symlinks and skips existing target files during the Tilix → ttyx_ first-run migration (#49).

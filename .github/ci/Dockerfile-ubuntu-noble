@@ -10,6 +10,12 @@ RUN mkdir -p /build/ci/
 COPY install-deps-deb.sh /build/ci/
 RUN chmod +x /build/ci/install-deps-deb.sh && /build/ci/install-deps-deb.sh
 
+# install LDC from upstream tarball — uniform across all CI images so the
+# build is not coupled to any one distro's apt archive (see #49 / fix for
+# ldc disappearing from Debian Testing during a transition)
+COPY install-ldc-tarball.sh /build/ci/
+RUN chmod +x /build/ci/install-ldc-tarball.sh && /build/ci/install-ldc-tarball.sh
+
 COPY make-install-deps-extern.sh /build/ci/
 RUN chmod +x /build/ci/make-install-deps-extern.sh && /build/ci/make-install-deps-extern.sh
 

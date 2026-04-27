@@ -15,14 +15,20 @@ apt-get install -yq \
         eatmydata \
         build-essential
 
-# install build dependencies
+# install build dependencies. Note: ldc and its runtime libxml2
+# dependency are handled by install-ldc-tarball.sh — ldc is currently
+# missing from Debian Testing during a transition, and libxml2 went
+# through a SONAME bump in the same suite (libxml2.so.2 → .so.16)
+# so the package name varies. curl/xz-utils/ca-certificates are the
+# tools install-ldc-tarball.sh needs.
 eatmydata apt-get install -yq \
         meson \
         ninja-build \
         appstream \
+        ca-certificates \
+        curl \
         desktop-file-utils \
         git \
-        ldc \
         libatk1.0-dev \
         libcairo2-dev \
         libglib2.0-dev \
@@ -34,4 +40,5 @@ eatmydata apt-get install -yq \
         libpeas-dev \
         libvte-2.91-dev \
         po4a \
-        xvfb
+        xvfb \
+        xz-utils
