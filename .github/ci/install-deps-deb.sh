@@ -18,7 +18,9 @@ apt-get install -yq \
 # install build dependencies. Note: ldc is installed from the upstream
 # tarball by install-ldc-tarball.sh — it is currently missing from
 # Debian Testing during a transition. curl/xz-utils/ca-certificates are
-# the tools that script needs.
+# the tools that script needs. libxml2 is a runtime dependency of the
+# upstream LDC binary itself (the prebuilt tarball dynamically links to
+# libxml2.so.2; missing from Debian Testing's base image otherwise).
 eatmydata apt-get install -yq \
         meson \
         ninja-build \
@@ -37,6 +39,7 @@ eatmydata apt-get install -yq \
         libgtksourceview-3.0-dev \
         libpeas-dev \
         libvte-2.91-dev \
+        libxml2 \
         po4a \
         xvfb \
         xz-utils

@@ -34,5 +34,11 @@ done
 echo "${LDC_PREFIX}/lib" > /etc/ld.so.conf.d/ldc.conf
 ldconfig
 
-# Smoke-test the install — fails the build immediately if something is wrong.
-ldc2 --version
+# Smoke-test: if ldc2 fails to launch, dump all unresolved shared
+# libraries before exiting so the next CI iteration can fix them all
+# at once instead of discovering them one-by-one.
+if ! ldc2 --version; then
+    echo "===== ldc2 failed to launch — dumping ldd output ====="
+    ldd "${LDC_PREFIX}/bin/ldc2" || true
+    exit 1
+fi
