@@ -3375,6 +3375,14 @@ public:
         vte.setInputEnabled(!s.readOnly);
         SimpleAction roAction = cast(SimpleAction) sagTerminalActions.lookup(ACTION_READ_ONLY);
         roAction.setState(new GVariant(s.readOnly));
+        // Match the read-only action handler's full behaviour: it shows /
+        // hides the lock-icon indicator next to the title bar. Without this,
+        // a restored read-only terminal has its input disabled but no visual
+        // cue. The pre-refactor deserialize() had the same omission — it is
+        // fixed now alongside the snapshot work, since this is the only
+        // path through the toggle that did not touch imgReadOnly.
+        if (s.readOnly) imgReadOnly.show();
+        else imgReadOnly.hide();
         _synchronizeInputOverride = s.synchronizedInput;
         SimpleAction siAction = cast(SimpleAction) sagTerminalActions.lookup(ACTION_SYNC_INPUT_OVERRIDE);
         siAction.setState(new GVariant(_synchronizeInputOverride));
