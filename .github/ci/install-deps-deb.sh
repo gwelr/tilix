@@ -15,12 +15,12 @@ apt-get install -yq \
         eatmydata \
         build-essential
 
-# install build dependencies. Note: ldc is installed from the upstream
-# tarball by install-ldc-tarball.sh — it is currently missing from
-# Debian Testing during a transition. curl/xz-utils/ca-certificates are
-# the tools that script needs. libxml2 is a runtime dependency of the
-# upstream LDC binary itself (the prebuilt tarball dynamically links to
-# libxml2.so.2; missing from Debian Testing's base image otherwise).
+# install build dependencies. Note: ldc and its runtime libxml2
+# dependency are handled by install-ldc-tarball.sh — ldc is currently
+# missing from Debian Testing during a transition, and libxml2 went
+# through a SONAME bump in the same suite (libxml2.so.2 → .so.16)
+# so the package name varies. curl/xz-utils/ca-certificates are the
+# tools install-ldc-tarball.sh needs.
 eatmydata apt-get install -yq \
         meson \
         ninja-build \
@@ -39,7 +39,6 @@ eatmydata apt-get install -yq \
         libgtksourceview-3.0-dev \
         libpeas-dev \
         libvte-2.91-dev \
-        libxml2 \
         po4a \
         xvfb \
         xz-utils

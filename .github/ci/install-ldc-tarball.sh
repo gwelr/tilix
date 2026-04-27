@@ -20,6 +20,26 @@ LDC_TARBALL="ldc2-${LDC_VERSION}-${LDC_PLATFORM}.tar.xz"
 LDC_URL="https://github.com/ldc-developers/ldc/releases/download/v${LDC_VERSION}/${LDC_TARBALL}"
 LDC_PREFIX="/opt/ldc2"
 
+# LDC's prebuilt binary dynamically links to libxml2.so.2. Install whatever
+# package provides it on the running distro:
+#   - Debian Stable / Ubuntu: `libxml2` still ships the legacy SONAME.
+#   - Debian Testing (forky): libxml2 went through a SONAME bump to .so.16;
+#     the legacy package is gone. Install libxml2-16 and symlink so the
+#     LDC binary can dlopen "libxml2.so.2". The libxml2 ABI surface that
+#     LDC actually uses is small enough that this works in practice;
+#     verified by the post-install smoke-test below.
+if apt-get install -yq libxml2 2>/dev/null; then
+    : # legacy SONAME available natively
+else
+    echo ">>> libxml2 (legacy SONAME) unavailable — installing libxml2-16 + compat symlink"
+    apt-get install -yq libxml2-16
+    libdir="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
+                       || gcc -print-multiarch 2>/dev/null \
+                       || echo x86_64-linux-gnu)"
+    ln -sf "${libdir}/libxml2.so.16" "${libdir}/libxml2.so.2"
+    ldconfig
+fi
+
 mkdir -p "${LDC_PREFIX}"
 curl -fsSL "${LDC_URL}" | tar -xJ --strip-components=1 -C "${LDC_PREFIX}"
 
@@ -42,3 +62,17 @@ if ! ldc2 --version; then
     ldd "${LDC_PREFIX}/bin/ldc2" || true
     exit 1
 fi
+
+# Real-compile smoke test — `--version` does not exercise the libxml2
+# code path, so on Debian Testing (where we symlink libxml2.so.2 →
+# libxml2.so.16 above) ABI breakage would only surface at compile time.
+# Compile a trivial program to catch that here, before the real build.
+cat > /tmp/ldc-smoke.d <<'EOF'
+void main() {}
+EOF
+if ! ldc2 -of=/tmp/ldc-smoke /tmp/ldc-smoke.d; then
+    echo "===== ldc2 failed to compile — likely a libxml2 ABI issue ====="
+    ldd "${LDC_PREFIX}/bin/ldc2" || true
+    exit 1
+fi
+rm -f /tmp/ldc-smoke /tmp/ldc-smoke.d /tmp/ldc-smoke.o
