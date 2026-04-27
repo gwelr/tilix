@@ -67,12 +67,13 @@ fi
 # code path, so on Debian Testing (where we symlink libxml2.so.2 →
 # libxml2.so.16 above) ABI breakage would only surface at compile time.
 # Compile a trivial program to catch that here, before the real build.
-cat > /tmp/ldc-smoke.d <<'EOF'
+# File name must be a valid D identifier — no hyphens.
+cat > /tmp/smoke.d <<'EOF'
 void main() {}
 EOF
-if ! ldc2 -of=/tmp/ldc-smoke /tmp/ldc-smoke.d; then
-    echo "===== ldc2 failed to compile — likely a libxml2 ABI issue ====="
+if ! ldc2 -of=/tmp/smoke /tmp/smoke.d; then
+    echo "===== ldc2 failed to compile — possible libxml2 ABI issue ====="
     ldd "${LDC_PREFIX}/bin/ldc2" || true
     exit 1
 fi
-rm -f /tmp/ldc-smoke /tmp/ldc-smoke.d /tmp/ldc-smoke.o
+rm -f /tmp/smoke /tmp/smoke.d /tmp/smoke.o
