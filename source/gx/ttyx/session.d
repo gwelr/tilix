@@ -824,14 +824,12 @@ private:
     enum NODE_CHILD = "child";
     enum NODE_CHILD1 = "child1";
     enum NODE_CHILD2 = "child2";
-    enum NODE_DIRECTORY = "directory";
-    enum NODE_PROFILE = "profile";
-    enum NODE_MAXIMIZED = "maximized";
-    enum NODE_WIDTH = "width";
-    enum NODE_HEIGHT = "height";
-    enum NODE_SYNCHRONIZED_INPUT = "synchronizedInput";
+    // NODE_PROFILE / NODE_DIRECTORY / NODE_MAXIMIZED / NODE_UUID /
+    // NODE_SYNCHRONIZED_INPUT live in gx.ttyx.terminal.types as the
+    // single source of truth for the terminal-level wire format.
+    enum NODE_WIDTH = "width";   // session-root width — separate from per-terminal
+    enum NODE_HEIGHT = "height"; // session-root height — separate from per-terminal
     enum NODE_RATIO = "ratio";
-    enum NODE_UUID = "uuid";
 
     /**
      * Widget Types which are serialized
@@ -912,15 +910,17 @@ private:
      * Serialize the TerminalPane widget
      */
     JSONValue serializeTerminal(JSONValue value, Terminal terminal) {
-        value[NODE_PROFILE] = terminal.defaultProfileUUID;
-        value[NODE_DIRECTORY] = terminal.currentLocalDirectory;
-        value[NODE_WIDTH] = JSONValue(terminal.getAllocatedWidth());
-        value[NODE_HEIGHT] = JSONValue(terminal.getAllocatedHeight());
-        value[NODE_UUID] = terminal.uuid;
-        if (maximizedInfo.isMaximized && equal(terminal, maximizedInfo.terminal)) {
-            value[NODE_MAXIMIZED] = JSONValue(true);
+        // Single source of truth for the terminal wire format.
+        TerminalSnapshot snapshot = terminal.snapshot();
+        // Maximized is session-level state — set it here, not in Terminal.snapshot().
+        snapshot.maximized = (maximizedInfo.isMaximized && equal(terminal, maximizedInfo.terminal));
+        // Merge snapshot's keys into the value JSON the caller is building
+        // (which already has NODE_TYPE set by serializeWidget).
+        JSONValue snapJson = snapshot.toJSON();
+        foreach (string key, ref JSONValue val; snapJson.object) {
+            value[key] = val;
         }
-        return terminal.serialize(value);
+        return value;
     }
 
     /**
@@ -940,15 +940,13 @@ private:
     Terminal parseTerminal(JSONValue value) {
         trace("Loading terminal");
         //TODO Check that the profile exists and use default if it doesn't
-        string profileUUID = value[NODE_PROFILE].str();
-        string uuid;
-        if (NODE_UUID in value) {
-            uuid = value[NODE_UUID].str();
-        }
-        Terminal terminal = createTerminal(profileUUID, uuid);
-        terminal.deserialize(value);
-        terminal.initTerminal(value[NODE_DIRECTORY].str(), false);
-        if (NODE_MAXIMIZED in value && value[NODE_MAXIMIZED].type == JSONType.true_) {
+        TerminalSnapshot snapshot = TerminalSnapshot.fromJSON(value);
+        Terminal terminal = createTerminal(snapshot.profileUUID, snapshot.uuid);
+        terminal.restore(snapshot);
+        terminal.initTerminal(snapshot.directory, false);
+        // Maximized is session-level state — Terminal.restore intentionally
+        // does not consume snapshot.maximized; we read it back here.
+        if (snapshot.maximized) {
             maximizedUUID = terminal.uuid;
         }
         return terminal;
