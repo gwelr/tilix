@@ -1193,11 +1193,6 @@ private:
             });
         }
 
-        //Disable background draw if available
-        if (checkVTEFeature(TerminalFeature.DISABLE_BACKGROUND_DRAW) && !checkVTEVersion(VTE_VERSION_BACKGROUND_OPERATOR)) {
-            vte.setDisableBGDraw(true);
-        }
-
         Box box = new Box(Orientation.VERTICAL, 0);
         rFind = new SearchRevealer(vte, sagTerminalActions);
         rFind.onSearchEntryFocusIn.connect(&terminalWidgetFocusIn);
@@ -2665,12 +2660,20 @@ private:
         vte.addOnDragMotion(&onVTEDragMotion);
         vte.addOnDragLeave(&onVTEDragLeave);
 
-        if (checkVTEVersion(VTE_VERSION_BACKGROUND_OPERATOR)) {
-            vte.setClearBackground(false);
-        }
+        // Let VTE paint the terminal background natively. Required for
+        // OSC 11 (dynamic background-color) support — apps like neovim and
+        // theme-switching scripts rely on it. The pre-0.51 SOURCE-compositing
+        // workaround that disabled VTE's bg paint is no longer needed; VTE
+        // 0.51+ handles it correctly. (#47)
+        //
+        // Badge draws AFTER VTE's default handler so it appears on top of
+        // the terminal output. Pre-OSC-11 it ran BEFORE because we painted
+        // the background ourselves and let VTE's text overlay the badge;
+        // now VTE paints the bg in its default handler, which would erase
+        // anything we drew first.
         //TODO - Figure out why this is causing issues, see #545
         if (isVTEBackgroundDrawEnabled()) {
-            vte.addOnDraw(&renderer.onDrawBadge);
+            vte.addOnDraw(&renderer.onDrawBadge, ConnectFlags.AFTER);
         }
         vte.addOnDraw(&renderer.onDrawDragHighlight, ConnectFlags.AFTER);
 
