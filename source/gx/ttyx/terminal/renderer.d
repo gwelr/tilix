@@ -25,9 +25,7 @@ import gtk.Widget : Widget;
 import pango.c.types : PANGO_SCALE = SCALE;
 
 import gx.gtk.color : adjustColor, contrast;
-import gx.gtk.vte : isVTEBackgroundDrawEnabled, checkVTEVersion, VTE_VERSION_BACKGROUND_GET_COLOR,
-    VTE_VERSION_BACKGROUND_OPERATOR;
-import gx.ttyx.constants : COMPILE_VTE_BACKGROUND_COLOR;
+import gx.gtk.vte : isVTEBackgroundDrawEnabled;
 import gx.ttyx.preferences;
 import gx.ttyx.terminal.context;
 import gx.ttyx.terminal.types;
@@ -76,10 +74,6 @@ private:
     RGBA _vteBold;
     RGBA _dimBold;
     double _dimPercent;
-
-    static if (COMPILE_VTE_BACKGROUND_COLOR) {
-        RGBA _drawBG;
-    }
 
     enum STROKE_WIDTH = 4;
     enum BADGE_MARGIN = 10;
@@ -334,26 +328,8 @@ public:
         auto vte = _ctx.contextVte();
         auto gsProfile = _ctx.contextGsProfile();
 
-        // Paint background if VTE background draw is disabled
-        if (isVTEBackgroundDrawEnabled()) {
-            static if (COMPILE_VTE_BACKGROUND_COLOR) {
-                if (checkVTEVersion(VTE_VERSION_BACKGROUND_GET_COLOR)) {
-                    if (_drawBG is null) _drawBG = new RGBA();
-                    vte.getColorBackgroundForDraw(_drawBG);
-                } else {
-                    _drawBG = _vteBG;
-                }
-                cr.setSourceRgba(_drawBG.red, _drawBG.green, _drawBG.blue, _drawBG.alpha);
-            } else {
-                cr.setSourceRgba(_vteBG.red, _vteBG.green, _vteBG.blue, _vteBG.alpha);
-            }
-            import cairo.Types : cairo_operator_t;
-            cr.setOperator(cairo_operator_t.SOURCE);
-            cr.rectangle(0.0, 0.0, width, height);
-            cr.clip();
-            cr.paint();
-            cr.resetClip();
-        }
+        // Background painting is left to VTE so OSC 11 (dynamic background)
+        // works — see #47.
 
         // Draw margin line
         if (_margin > 0 && _marginEnabled) {

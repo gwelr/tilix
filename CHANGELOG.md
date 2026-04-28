@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- **OSC 11 (dynamic background color) support** — apps like neovim and theme-switching scripts can now change the terminal background at runtime via `printf '\033]11;#rrggbb\007'`; reset with `printf '\033]111\007'`. ttyx_ no longer disables VTE's native background painting, so OSC 11 is honoured natively. The badge draw signal moved from the BEFORE phase to AFTER so badges still render on top of the terminal output (#47).
 - Documentation site at <https://gwelr.github.io/ttyx_/> — built with Jekyll + just-the-docs, manual content adapted from upstream Tilix under MPL-2.0 (#59, #60, #61, #63, #64).
 - Unit test coverage for the password manager row-removal path, extracted as `removeRowById` (#54).
 - Unit tests for the proxy URL builder, sensitive-value redaction, and process introspection helpers (#55, #56, #58).
