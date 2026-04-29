@@ -151,17 +151,45 @@ enum REGEX_EMAIL = DEFS ~ "(?i:mailto:)?" ~ USER ~ "@" ~ EMAIL_HOST;
 enum REGEX_NEWS_MAN = "(?i:news:|man:|info:)[-[:alnum:]\\Q^_{|}~!\"#$%&'()*+,./;:=?`\\E]+";
 
 /**
- * This replaces all instances of $x tokens with values
- * from Regex match. The token $0 matches the whole match
- * whereas $1..$x are replaced with appropriate group match
+ * Substitutes $0..$N tokens in `tokenizedText` with the corresponding entry
+ * from `matches`. Convention from callers: matches[0] is the whole match
+ * (m.hit), matches[1..] are the capture groups in order.
+ *
+ * Iterates in reverse so that longer indices (`$10`, `$11`, ...) are
+ * substituted before their prefix (`$1`); otherwise the `$1` pass would
+ * bite into the start of `$10` and corrupt the result.
  */
- string replaceMatchTokens(string tokenizedText, string[] matches) {
-     string result = tokenizedText;
-     foreach(i, match; matches) {
-        result = result.replace("$" ~ to!string(i - 1), match);
-     }
-     return result;
- }
+string replaceMatchTokens(string tokenizedText, string[] matches) {
+    string result = tokenizedText;
+    foreach_reverse (i, match; matches) {
+        result = result.replace("$" ~ to!string(i), match);
+    }
+    return result;
+}
+
+unittest {
+    // $0 == whole match (regression test for the size_t.max underflow that
+    // shifted every index by one and made the whole-match unreachable).
+    assert(replaceMatchTokens("got $0", ["WHOLE"]) == "got WHOLE");
+
+    // $0 + capture groups
+    assert(replaceMatchTokens("[$0] $1/$2", ["all", "first", "second"])
+           == "[all] first/second");
+
+    // Reverse-iteration test: $10 must survive the $1 pass intact.
+    string[] m11 = new string[](11);
+    foreach (i, ref s; m11) s = "g" ~ to!string(i);
+    assert(replaceMatchTokens("$10 then $1", m11) == "g10 then g1");
+
+    // No tokens in template: identity.
+    assert(replaceMatchTokens("plain text", ["a", "b"]) == "plain text");
+
+    // Empty matches: identity (no tokens to substitute).
+    assert(replaceMatchTokens("$0 $1", []) == "$0 $1");
+
+    // Token referring beyond available matches stays untouched.
+    assert(replaceMatchTokens("$0 $1 $2", ["only-zero"]) == "only-zero $1 $2");
+}
 
 /**
  * Struct used to track matches in terminal for cases like context menu
