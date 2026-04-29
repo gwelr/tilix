@@ -1961,31 +1961,42 @@ private:
             tracef("Processing custom regex with tag %d", urlMatch.tag);
             if (urlMatch.tag in regexTag) {
                 TerminalRegex tr = regexTag[urlMatch.tag];
-                try {
-                    // TODO: This should be updated to PCRE2 for VTE 0.46, need to
-                    // find a D language binding for PCRE2 ideally
-                    GRegex regex = compileGRegex(tr);
-                    if (regex !is null) {
-                        GMatchInfo info;
-                        regex.match(urlMatch.match, cast(GRegexMatchFlags) 0, info);
-                        tracef("Match count %d", info.getMatchCount());
-                        if (info.matches) {
-                            string[] groups = [info.getString()];
-                            groups ~= info.fetchAll();
-                            foreach(group; groups) tracef("Group %s", group);
-                            string command = replaceMatchTokens(tr.command, groups);
-                            command = replaceVariables(command);
-                            trace("Command: " ~ command);
-                            string[string] env;
-                            spawnShell(command, env, Config.none, currentLocalDirectory);
+                tr.match!(
+                    (CustomRegex cr) {
+                        try {
+                            // TODO: This should be updated to PCRE2 for VTE 0.46, need to
+                            // find a D language binding for PCRE2 ideally
+                            GRegex regex = compileGRegex(tr);
+                            if (regex !is null) {
+                                GMatchInfo info;
+                                regex.match(urlMatch.match, cast(GRegexMatchFlags) 0, info);
+                                tracef("Match count %d", info.getMatchCount());
+                                if (info.matches) {
+                                    string[] groups = [info.getString()];
+                                    groups ~= info.fetchAll();
+                                    foreach(group; groups) tracef("Group %s", group);
+                                    string command = replaceMatchTokens(cr.command, groups);
+                                    command = replaceVariables(command);
+                                    trace("Command: " ~ command);
+                                    string[string] env;
+                                    spawnShell(command, env, Config.none, currentLocalDirectory);
+                                }
+                            }
+                        } catch (GException ge) {
+                            string message = format(_("Custom link regex '%s' has an error, ignoring"), cr.pattern);
+                            showErrorDialog(cast(Window)getToplevel(), message, _("Regular Expression Error"));
+                            error(message);
+                            error(ge.msg);
                         }
-                    }
-                } catch (GException ge) {
-                    string message = format(_("Custom link regex '%s' has an error, ignoring"), tr.pattern);
-                    showErrorDialog(cast(Window)getToplevel(), message, _("Regular Expression Error"));
-                    error(message);
-                    error(ge.msg);
-                }
+                    },
+                    (BuiltinRegex _) {
+                        // Inconsistent state: flavor said CUSTOM but the stored regex
+                        // is a Builtin. Only reachable if a future code path stores a
+                        // BuiltinRegex with flavor CUSTOM, which is itself impossible
+                        // because BuiltinRegex's flavor is set at construction.
+                        errorf("Inconsistent regex registration: tag %d marked CUSTOM but stored as BuiltinRegex", urlMatch.tag);
+                    },
+                );
             }
             return;
         default:
@@ -2328,7 +2339,11 @@ private:
                 } catch (Exception e) {
                     trace("Bool CaseInsensitive invalid string, ignoring");
                 }
-                TerminalRegex regex = TerminalRegex(value[0], TerminalURLFlavor.CUSTOM, caseInsensitive, value[1]);
+                if (value[0].length == 0) {
+                    trace("Skipping custom link entry with empty pattern");
+                    continue;
+                }
+                TerminalRegex regex = TerminalRegex(CustomRegex(value[0], caseInsensitive, value[1]));
                 try {
                     VRegex compiledRegex = compileVRegex(regex);
                     if (compiledRegex !is null) {
@@ -2338,7 +2353,7 @@ private:
                         tracef("Added regex: %s with tag %d",value[0], id);
                     }
                 } catch (GException ge) {
-                    error(format(_("Custom link regex '%s' has an error, ignoring"), regex));
+                    error(format(_("Custom link regex '%s' has an error, ignoring"), value[0]));
                     error(ge.msg);
                 }
             }

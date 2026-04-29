@@ -39,6 +39,7 @@ module gx.ttyx.terminal.regex;
 
 import std.conv;
 import std.string;
+import std.sumtype;
 
 import glib.MatchInfo;
 import glib.Regex : GRegex = Regex;
@@ -218,24 +219,135 @@ enum TerminalURLFlavor {
     CUSTOM
 };
 
-struct TerminalRegex {
+/**
+ * Built-in URL regex pattern shipped with ttyx (HTTP, file://, mailto:, etc.).
+ * Carries the URL flavor so a click can be routed to the right opener.
+ *
+ * The variant pair (`BuiltinRegex`, `CustomRegex`) replaces an earlier flat
+ * `TerminalRegex` struct with a `command` field that was "only used for custom
+ * regex" — that conditionally-valid field made it possible at the type level
+ * to forget `command` on a custom regex or set one on a builtin. Splitting
+ * removes that whole class of bug.
+ */
+struct BuiltinRegex {
     string pattern;
     TerminalURLFlavor flavor;
     bool caseless;
-    // Only used for custom regex
+
+    this(string pattern, TerminalURLFlavor flavor, bool caseless)
+    in { assert(pattern.length > 0, "BuiltinRegex requires a non-empty pattern"); }
+    do {
+        this.pattern = pattern;
+        this.flavor = flavor;
+        this.caseless = caseless;
+    }
+}
+
+/**
+ * User-defined custom-link regex. Always has flavor `CUSTOM` (encoded by the
+ * variant — no field needed) and triggers the templated `command` on click.
+ */
+struct CustomRegex {
+    string pattern;
+    bool caseless;
     string command;
+
+    this(string pattern, bool caseless, string command)
+    in {
+        assert(pattern.length > 0, "CustomRegex requires a non-empty pattern");
+        assert(command !is null, "CustomRegex requires a non-null command");
+    }
+    do {
+        this.pattern = pattern;
+        this.caseless = caseless;
+        this.command = command;
+    }
+}
+
+/**
+ * Tagged union over the two kinds of terminal regex. Replaces the previous
+ * flat struct with a conditionally-meaningful `command` field. Consumers that
+ * only need pattern/caseless go through the UFCS accessors below; consumers
+ * that want the custom-only `command` use `match!` to dispatch.
+ */
+alias TerminalRegex = SumType!(BuiltinRegex, CustomRegex);
+
+/// UFCS accessor: regex pattern, regardless of variant.
+string pattern(in TerminalRegex r) {
+    return r.match!(
+        (in BuiltinRegex br) => br.pattern,
+        (in CustomRegex cr)  => cr.pattern,
+    );
+}
+
+/// UFCS accessor: case-insensitive flag, regardless of variant.
+bool caseless(in TerminalRegex r) {
+    return r.match!(
+        (in BuiltinRegex br) => br.caseless,
+        (in CustomRegex cr)  => cr.caseless,
+    );
+}
+
+/// UFCS accessor: URL flavor. CustomRegex always reports CUSTOM.
+TerminalURLFlavor flavor(in TerminalRegex r) {
+    return r.match!(
+        (in BuiltinRegex br) => br.flavor,
+        (in CustomRegex cr)  => TerminalURLFlavor.CUSTOM,
+    );
+}
+
+unittest {
+    // BuiltinRegex constructor populates the three fields; the in contract
+    // requires non-empty pattern.
+    auto b = BuiltinRegex("https://", TerminalURLFlavor.DEFAULT_TO_HTTP, true);
+    assert(b.pattern == "https://");
+    assert(b.flavor == TerminalURLFlavor.DEFAULT_TO_HTTP);
+    assert(b.caseless);
+
+    // CustomRegex constructor populates pattern, caseless, command; in
+    // contracts require non-empty pattern and non-null command.
+    auto c = CustomRegex(`issue (\d+)`, false, "xdg-open https://example.com/$1");
+    assert(c.pattern == `issue (\d+)`);
+    assert(!c.caseless);
+    assert(c.command == "xdg-open https://example.com/$1");
+
+    // SumType wrapping + UFCS accessors give a uniform read API across the
+    // two variants.
+    TerminalRegex br = TerminalRegex(b);
+    assert(br.pattern == "https://");
+    assert(br.caseless);
+    assert(br.flavor == TerminalURLFlavor.DEFAULT_TO_HTTP);
+
+    TerminalRegex cr = TerminalRegex(c);
+    assert(cr.pattern == `issue (\d+)`);
+    assert(!cr.caseless);
+    // CustomRegex always reports CUSTOM regardless of how it was constructed.
+    assert(cr.flavor == TerminalURLFlavor.CUSTOM);
+
+    // Variant dispatch via match!: the consumer of `command` is reachable
+    // only on the CustomRegex variant — the BuiltinRegex branch can no
+    // longer accidentally read a stale/empty `command` field because the
+    // type doesn't carry one.
+    string commandFor(TerminalRegex r) {
+        return r.match!(
+            (BuiltinRegex _) => "",
+            (CustomRegex c)  => c.command,
+        );
+    }
+    assert(commandFor(br) == "");
+    assert(commandFor(cr) == "xdg-open https://example.com/$1");
 }
 
 /**
  * The list of regex patterns supported by the terminal
  */
 immutable TerminalRegex[] URL_REGEX_PATTERNS = [
-    TerminalRegex(REGEX_URL_AS_IS, TerminalURLFlavor.AS_IS, true),
-    TerminalRegex(REGEX_URL_FILE, TerminalURLFlavor.AS_IS, true),
-    TerminalRegex(REGEX_URL_HTTP, TerminalURLFlavor.DEFAULT_TO_HTTP, true),
-    TerminalRegex(REGEX_URL_VOIP, TerminalURLFlavor.VOIP_CALL, true),
-    TerminalRegex(REGEX_EMAIL, TerminalURLFlavor.EMAIL, true),
-    TerminalRegex(REGEX_NEWS_MAN, TerminalURLFlavor.AS_IS, true)
+    TerminalRegex(BuiltinRegex(REGEX_URL_AS_IS, TerminalURLFlavor.AS_IS, true)),
+    TerminalRegex(BuiltinRegex(REGEX_URL_FILE, TerminalURLFlavor.AS_IS, true)),
+    TerminalRegex(BuiltinRegex(REGEX_URL_HTTP, TerminalURLFlavor.DEFAULT_TO_HTTP, true)),
+    TerminalRegex(BuiltinRegex(REGEX_URL_VOIP, TerminalURLFlavor.VOIP_CALL, true)),
+    TerminalRegex(BuiltinRegex(REGEX_EMAIL, TerminalURLFlavor.EMAIL, true)),
+    TerminalRegex(BuiltinRegex(REGEX_NEWS_MAN, TerminalURLFlavor.AS_IS, true))
 ];
 
 immutable VRegex[URL_REGEX_PATTERNS.length] compiledVRegex;
